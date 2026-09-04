@@ -145,16 +145,42 @@ export interface ClassificationResult {
   explanation?: string;
 }
 
+export type IncidentStatus = "NEW" | "ACTIVE" | "ACKNOWLEDGED" | "ASSIGNED" | "INVESTIGATING" | "RESOLVED";
+
+export type ResponseTeamType =
+  | "Industrial Emergency Response"
+  | "Forest Fire Response"
+  | "Field Inspection"
+  | "GIS Verification";
+
+export interface AlertAuditEntry {
+  timestamp: string;
+  action: string;
+  performed_by: string;
+  notes?: string;
+}
+
 export interface AlertItem {
   id: string;
   event_id: string;
   title: string;
   description: string;
   severity: RiskLevel;
-  status: "ACTIVE" | "ACKNOWLEDGED" | "RESOLVED";
+  status: IncidentStatus;
+  incident_status?: IncidentStatus;
   facility_name?: string;
   action_recommended?: string;
+  assigned_team?: ResponseTeamType | string | null;
+  assigned_by?: string | null;
+  assigned_at?: string | null;
+  acknowledged_by?: string | null;
+  acknowledged_at?: string | null;
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  resolution_notes?: string | null;
+  audit_trail?: AlertAuditEntry[];
   created_at: string;
+  updated_at?: string;
 }
 
 export interface HotspotRecord {

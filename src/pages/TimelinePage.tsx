@@ -131,33 +131,33 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
   }));
 
   return (
-    <div className="h-full overflow-y-auto p-6 bg-slate-50 text-slate-800 space-y-6">
+    <div className="h-full overflow-y-auto p-3.5 sm:p-6 bg-slate-50 text-slate-800 space-y-4 sm:space-y-6">
       {/* Top Navigation & Target Selector Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           {onReturnToMap && (
             <button
               onClick={onReturnToMap}
-              className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              className="px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer min-h-[38px]"
             >
               <ArrowLeft className="w-3.5 h-3.5 text-blue-600" />
-              <span>Surveillance Map</span>
+              <span>Map</span>
             </button>
           )}
 
           {/* Target Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Target Hotspot:</span>
+          <div className="flex items-center gap-2 flex-1 sm:flex-initial min-w-0">
+            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap hidden sm:inline">Target Hotspot:</span>
             <select
               value={activeHotspot?.event.id || ""}
               onChange={(e) => {
                 const found = hotspots.find((h) => h.event.id === e.target.value);
                 if (found) handleSelectTarget(found);
               }}
-              className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-blue-700 font-mono font-medium focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+              className="px-2.5 sm:px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-blue-700 font-mono font-medium focus:outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto truncate min-h-[38px]"
             >
-              {(filterPersistent ? hotspots.filter((h) => h.temporal_profile?.is_persistent) : hotspots).map((h) => (
-                <option key={h.event.id} value={h.event.id}>
+              {(filterPersistent ? hotspots.filter((h) => h.temporal_profile?.is_persistent) : hotspots).map((h, idx) => (
+                <option key={h.event.id ? `${h.event.id}-${idx}` : `h-${idx}`} value={h.event.id}>
                   {h.event.id} — {h.classification.predicted_class} ({h.geo_context.nearest_industrial_facility})
                 </option>
               ))}
@@ -173,25 +173,25 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
                 if (pers) handleSelectTarget(pers);
               }
             }}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${
+            className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer min-h-[38px] ${
               filterPersistent
                 ? "bg-teal-50 text-teal-800 border-teal-300"
                 : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
             }`}
           >
             <Clock className="w-3.5 h-3.5 text-teal-700" />
-            <span>Persistent Only</span>
+            <span className="whitespace-nowrap">Persistent</span>
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 justify-end">
           {activeHotspot && onInspectDetails && (
             <button
               onClick={() => onInspectDetails(activeHotspot)}
-              className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer min-h-[38px]"
             >
               <FileText className="w-3.5 h-3.5 text-blue-600" />
-              <span>Detailed Dossier</span>
+              <span>Dossier</span>
               <ChevronRight className="w-3.5 h-3.5 text-blue-600" />
             </button>
           )}
@@ -200,7 +200,7 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
             <button
               onClick={() => fetchTimeline(activeHotspot)}
               title="Refresh orbit trajectory passes"
-              className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 cursor-pointer transition shadow-2xs"
+              className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 cursor-pointer transition min-h-[38px] min-w-[38px] flex items-center justify-center"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingTimeline ? "animate-spin text-blue-600" : ""}`} />
             </button>
@@ -209,11 +209,11 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
       </div>
 
       {/* Header Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Temporal Persistence & Multi-Pass Revisit Timeline
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              Temporal Persistence & Multi-Pass Timeline
             </h2>
             <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 uppercase">
               Temporal Intelligence Active
@@ -226,50 +226,50 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
       </div>
 
       {activeHotspot && (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Metrics summary row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Temporal Signature</div>
-              <div className="text-lg font-bold text-slate-900 mt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+            <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Temporal Signature</div>
+              <div className="text-sm sm:text-base font-bold text-slate-900 mt-1">
                 {activeHotspot.temporal_profile.is_persistent ? (
                   <span className="text-teal-700 font-bold">Persistent Source</span>
                 ) : (
                   <span className="text-slate-600 font-bold">Transient Anomaly</span>
                 )}
               </div>
-              <div className="text-[11px] text-slate-400 font-mono mt-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-400 font-mono mt-0.5 truncate">
                 Cluster: {activeHotspot.temporal_profile.cluster_id}
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Persistence Duration</div>
-              <div className="text-2xl font-black text-blue-600 font-mono mt-1">
+            <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Persistence Duration</div>
+              <div className="text-xl sm:text-2xl font-black text-blue-600 font-mono mt-0.5 sm:mt-1">
                 {activeHotspot.temporal_profile.persistence_days} <span className="text-xs text-slate-400 font-normal">days</span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
                 First seen {activeHotspot.temporal_profile.first_seen}
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Passes</div>
-              <div className="text-2xl font-black text-amber-600 font-mono mt-1">
+            <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Passes</div>
+              <div className="text-xl sm:text-2xl font-black text-amber-600 font-mono mt-0.5 sm:mt-1">
                 {activeHotspot.temporal_profile.observation_count} <span className="text-xs text-slate-400 font-normal">detections</span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                ~{activeHotspot.temporal_profile.frequency_per_week} passes / week
+              <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
+                ~{activeHotspot.temporal_profile.frequency_per_week} passes / wk
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Recurrence Ratio</div>
-              <div className="text-2xl font-black text-teal-700 font-mono mt-1">
+            <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Recurrence Ratio</div>
+              <div className="text-xl sm:text-2xl font-black text-teal-700 font-mono mt-0.5 sm:mt-1">
                 {(activeHotspot.temporal_profile.recurrence_ratio * 100).toFixed(1)}%
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                Seasonality: {activeHotspot.temporal_profile.seasonal_pattern || "Continuous"}
+              <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
+                {activeHotspot.temporal_profile.seasonal_pattern || "Continuous"}
               </div>
             </div>
           </div>

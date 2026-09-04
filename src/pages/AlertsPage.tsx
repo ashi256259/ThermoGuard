@@ -1,5 +1,25 @@
 import React, { useState, useEffect } from "react";
-import { ShieldAlert, CheckCircle, AlertTriangle, ShieldCheck, Filter, ArrowUpRight, Clock, Building2, Check, RefreshCw, MapPin, History, Lock } from "lucide-react";
+import { 
+  ShieldAlert, 
+  CheckCircle, 
+  AlertTriangle, 
+  ShieldCheck, 
+  Filter, 
+  ArrowUpRight, 
+  Clock, 
+  Building2, 
+  Check, 
+  RefreshCw, 
+  MapPin, 
+  History, 
+  Lock,
+  Satellite,
+  BrainCircuit,
+  Siren,
+  UserCheck,
+  Users,
+  CheckCircle2
+} from "lucide-react";
 import { apiService, HotspotItem } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -9,6 +29,78 @@ interface AlertsPageProps {
   onOpenTimeline?: (hotspot: HotspotItem) => void;
   initialSeverity?: string;
 }
+
+const ResponseWorkflow = () => {
+  const steps = [
+    { id: 1, label: "Detection", icon: <Satellite className="w-4 h-4" /> },
+    { id: 2, label: "Classification", icon: <BrainCircuit className="w-4 h-4" /> },
+    { id: 3, label: "Assessment", icon: <ShieldAlert className="w-4 h-4" /> },
+    { id: 4, label: "Alert Generated", icon: <Siren className="w-4 h-4" /> },
+    { id: 5, label: "Verification", icon: <UserCheck className="w-4 h-4" /> },
+    { id: 6, label: "Assignment", icon: <Users className="w-4 h-4" /> },
+    { id: 7, label: "Investigation", icon: <MapPin className="w-4 h-4" /> },
+    { id: 8, label: "Resolution", icon: <CheckCircle2 className="w-4 h-4" /> }
+  ];
+  return (
+    <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs mb-4 overflow-hidden">
+      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-4">Operational Response Workflow</h3>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center overflow-x-auto pb-2 custom-scrollbar">
+        {steps.map((s, idx) => (
+          <React.Fragment key={s.id}>
+             <div className="flex items-center gap-2 flex-shrink-0 z-10">
+               <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 border border-slate-200 shadow-sm">
+                 {s.icon}
+               </div>
+               <span className="text-[10px] sm:text-xs font-semibold text-slate-700 whitespace-nowrap">{s.label}</span>
+             </div>
+             {idx < steps.length - 1 && (
+                <div className="hidden sm:block flex-1 h-px bg-slate-200 mx-2 flex-shrink-0 min-w-[16px]" />
+             )}
+             {idx < steps.length - 1 && (
+                <div className="sm:hidden w-px h-4 bg-slate-200 ml-4 flex-shrink-0" />
+             )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const IncidentStatusTracker = ({ status }: { status: string }) => {
+  const statusSteps = [
+    { id: "NEW", label: "New" },
+    { id: "ACKNOWLEDGED", label: "Ack" },
+    { id: "ASSIGNED", label: "Assigned" },
+    { id: "INVESTIGATING", label: "Investigating" },
+    { id: "RESOLVED", label: "Resolved" }
+  ];
+  
+  const curStatus = status || "NEW";
+  
+  const getIndex = (st: string) => {
+    if (st === "ACTIVE") return 0;
+    const idx = statusSteps.findIndex(s => s.id === st);
+    return idx > -1 ? idx : 0;
+  };
+  
+  const curIndex = getIndex(curStatus);
+  
+  return (
+    <div className="mt-4 mb-3 flex items-center justify-between w-full max-w-md gap-1">
+       {statusSteps.map((st, i) => (
+          <React.Fragment key={st.id}>
+             <div className={`flex flex-col items-center gap-1.5 ${i <= curIndex ? 'text-blue-700' : 'text-slate-400'}`}>
+                <div className={`w-3.5 h-3.5 rounded-full border-2 z-10 ${i <= curIndex ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`} />
+                <span className="text-[9px] font-bold uppercase tracking-wider">{st.label}</span>
+             </div>
+             {i < statusSteps.length - 1 && (
+                <div className={`flex-1 h-px -mt-4 ${i < curIndex ? 'bg-blue-600' : 'bg-slate-200'}`} />
+             )}
+          </React.Fragment>
+       ))}
+    </div>
+  );
+};
 
 export const AlertsPage: React.FC<AlertsPageProps> = ({
   onSelectHotspot,
@@ -53,16 +145,47 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
     loadAlerts();
   }, [selectedSeverity, selectedStatus]);
 
-  const handleUpdateStatus = async (alertId: string, newStatus: "ACTIVE" | "ACKNOWLEDGED" | "RESOLVED") => {
+  const handleUpdateStatus = async (alertId: string, newStatus: string) => {
     try {
       setActionLoadingId(alertId);
       await apiService.updateAlertStatus(alertId, newStatus);
       // Update local state immediately
       setAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, status: newStatus, updated_at: new Date().toISOString() } : a))
+        prev.map((a) => (a.id === alertId ? { ...a, status: newStatus, incident_status: newStatus, updated_at: new Date().toISOString() } : a))
       );
     } catch (err) {
       console.error("Failed to update alert status", err);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleAssignTeam = async (alertId: string, team: string) => {
+    if (!canResolveAlerts || !team) return;
+    try {
+      setActionLoadingId(alertId);
+      await apiService.assignAlertTeam(alertId, team);
+      
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, status: "ASSIGNED", incident_status: "ASSIGNED", assigned_team: team, updated_at: new Date().toISOString() } : a))
+      );
+    } catch (err) {
+      console.error("Failed to assign team", err);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleIncidentAction = async (alertId: string, action: string, expectedStatus: string) => {
+    if (!canResolveAlerts) return;
+    try {
+      setActionLoadingId(alertId);
+      await apiService.executeAlertAction(alertId, action);
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, status: expectedStatus, incident_status: expectedStatus, updated_at: new Date().toISOString() } : a))
+      );
+    } catch (err) {
+      console.error("Failed to update status via action", err);
     } finally {
       setActionLoadingId(null);
     }
@@ -106,13 +229,13 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
   const resolvedCount = alerts.filter((a) => a.status === "RESOLVED").length;
 
   return (
-    <div className="h-full overflow-y-auto p-6 bg-slate-50 text-slate-800 space-y-6">
+    <div className="h-full overflow-y-auto p-3.5 sm:p-6 bg-slate-50 text-slate-800 space-y-4 sm:space-y-6">
       {/* Header Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Incident Alert & Operational Dispatch Center
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              Incident Alert & Dispatch Center
             </h2>
             <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 uppercase">
               Risk Intelligence Active
@@ -126,7 +249,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
         <div className="flex items-center gap-2.5">
           <button
             onClick={loadAlerts}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer min-h-[38px]"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-600" : "text-slate-500"}`} />
             <span>Refresh Dispatches</span>
@@ -135,41 +258,42 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
       </div>
 
       {/* KPI Metrics Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Registered Alerts</div>
-          <div className="text-2xl font-black font-mono text-slate-900 mt-1">{totalCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Deduplicated incidents</div>
+      <ResponseWorkflow />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Alerts</div>
+          <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 mt-0.5 sm:mt-1">{totalCount}</div>
+          <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Deduplicated</div>
         </div>
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Critical Priority</div>
-          <div className="text-2xl font-black font-mono text-red-600 mt-1">{criticalCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Immediate Tier-3 escalation</div>
+        <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Critical Priority</div>
+          <div className="text-xl sm:text-2xl font-black font-mono text-red-600 mt-0.5 sm:mt-1">{criticalCount}</div>
+          <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Tier-3 escalation</div>
         </div>
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">High Priority</div>
-          <div className="text-2xl font-black font-mono text-orange-600 mt-1">{highCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Priority field surveillance</div>
+        <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">High Priority</div>
+          <div className="text-xl sm:text-2xl font-black font-mono text-orange-600 mt-0.5 sm:mt-1">{highCount}</div>
+          <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Field surveillance</div>
         </div>
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active vs Resolved</div>
-          <div className="text-2xl font-black font-mono text-teal-700 mt-1">
-            {activeCount} <span className="text-xs text-slate-400 font-normal">/ {resolvedCount} resolved</span>
+        <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active / Resolved</div>
+          <div className="text-xl sm:text-2xl font-black font-mono text-teal-700 mt-0.5 sm:mt-1">
+            {activeCount} <span className="text-xs text-slate-400 font-normal">/ {resolvedCount}</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Operational resolution status</div>
+          <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Resolution status</div>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4 text-xs">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-blue-600" />
-            <span className="text-xs font-semibold text-slate-700">Severity:</span>
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+      <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 max-w-full overflow-x-auto pb-1 sm:pb-0">
+            <Filter className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+            <span className="text-xs font-semibold text-slate-700 flex-shrink-0">Severity:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
               {[
                 { id: "All", label: "All" },
-                { id: "HIGH_CRITICAL", label: "High & Critical" },
+                { id: "HIGH_CRITICAL", label: "High & Crit" },
                 { id: "CRITICAL", label: "Critical" },
                 { id: "HIGH", label: "High" },
                 { id: "MEDIUM", label: "Medium" },
@@ -178,7 +302,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                 <button
                   key={sev.id}
                   onClick={() => setSelectedSeverity(sev.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[32px] ${
                     selectedSeverity === sev.id
                       ? "bg-white text-blue-700 shadow-xs"
                       : "text-slate-600 hover:text-slate-900"
@@ -190,16 +314,16 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
             </div>
           </div>
 
-          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-200 hidden md:block" />
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-700">Status:</span>
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+          <div className="flex items-center gap-2 max-w-full overflow-x-auto pb-1 sm:pb-0">
+            <span className="text-xs font-semibold text-slate-700 flex-shrink-0">Status:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
               {["All", "ACTIVE", "ACKNOWLEDGED", "RESOLVED"].map((st) => (
                 <button
                   key={st}
                   onClick={() => setSelectedStatus(st)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[32px] ${
                     selectedStatus === st
                       ? "bg-white text-teal-700 shadow-xs"
                       : "text-slate-600 hover:text-slate-900"
@@ -212,8 +336,8 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
           </div>
         </div>
 
-        <span className="text-xs text-slate-500 font-mono font-medium">
-          Showing {alerts.length} incident records
+        <span className="text-[11px] sm:text-xs text-slate-500 font-mono font-medium">
+          {alerts.length} incident records
         </span>
       </div>
 
@@ -299,6 +423,35 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                     <span className="font-medium">{alert.action_recommended}</span>
                   </div>
                 )}
+                
+                <IncidentStatusTracker status={alert.incident_status || alert.status} />
+                
+                {canResolveAlerts && (isCrit || isHigh) && alert.status !== "RESOLVED" && (
+                  <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row gap-3">
+                    <select
+                      onChange={(e) => handleAssignTeam(alert.id, e.target.value)}
+                      value={alert.assigned_team || ""}
+                      className="flex-1 px-3 py-1.5 bg-white text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 shadow-xs cursor-pointer outline-none"
+                    >
+                      <option value="" disabled>Assign Response Team...</option>
+                      <option value="Industrial Emergency Response">Industrial Emergency Response</option>
+                      <option value="Forest Fire Response">Forest Fire Response</option>
+                      <option value="Field Inspection">Field Inspection</option>
+                      <option value="GIS Verification">GIS Verification</option>
+                    </select>
+                    <select
+                      onChange={(e) => handleIncidentAction(alert.id, e.target.value, e.target.value === "INVESTIGATE" ? "INVESTIGATING" : e.target.value)}
+                      value=""
+                      className="px-3 py-1.5 bg-white text-blue-700 text-xs font-bold rounded-lg border border-blue-300 shadow-xs cursor-pointer outline-none"
+                    >
+                      <option value="" disabled>Update Status...</option>
+                      <option value="ACKNOWLEDGE">Acknowledge</option>
+                      <option value="INVESTIGATE">Investigating</option>
+                      <option value="RESOLVE">Mark Resolved</option>
+                      <option value="ESCALATE">Escalate to Critical</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Interactive Action Bar */}
                 <div className="mt-4 pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
@@ -349,7 +502,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                         onClick={() => handleInspect(alert.event_id)}
                         className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                       >
-                        <span>Dossier</span>
+                        <span>View Evidence</span>
                         <ArrowUpRight className="w-3.5 h-3.5 text-blue-600" />
                       </button>
                     )}

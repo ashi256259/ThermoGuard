@@ -55,12 +55,12 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
   });
 
   return (
-    <div className="h-full flex flex-col p-6 overflow-y-auto bg-slate-50 text-slate-800 space-y-5">
+    <div className="h-full flex flex-col p-3.5 sm:p-6 overflow-y-auto bg-slate-50 text-slate-800 space-y-3.5 sm:space-y-5">
       {/* Header Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5 sm:gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
               Thermal Observation Catalog
             </h2>
             <span className="px-2 py-0.5 rounded text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 uppercase">
@@ -72,22 +72,22 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="relative w-full sm:w-auto">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 sm:top-3 text-slate-400" />
             <input
               type="text"
               placeholder="Search ID, facility, or class..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-7 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-64 transition-all"
+              className="pl-8 pr-7 py-1.5 sm:py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-full sm:w-64 transition-all min-h-[38px]"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="absolute right-2.5 top-2.5 sm:top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -95,7 +95,7 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shadow-2xs"
+            className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shadow-2xs min-h-[38px]"
           >
             <option value="All">All Sources</option>
             <option value="LIVE_FIRMS">Live NASA FIRMS Only</option>
@@ -104,7 +104,7 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
           <select
             value={selectedClass}
             onChange={(e) => setSelectedClass(e.target.value)}
-            className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-h-[38px]"
           >
             <option value="All">All Source Classes</option>
             <option value="Industrial Fire">Industrial Fire</option>
@@ -123,9 +123,9 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
                 setSourceFilter("All");
                 setSearchQuery("");
               }}
-              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              className="px-3 py-1.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer min-h-[38px]"
             >
-              <X className="w-3 h-3" />
+              <X className="w-3.5 h-3.5" />
               <span>Reset</span>
             </button>
           )}
@@ -133,20 +133,20 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
       </div>
 
       {/* Status Strip */}
-      <div className="p-3 rounded-xl bg-white border border-slate-200/80 flex items-center justify-between text-xs shadow-sm">
+      <div className="p-3 rounded-xl bg-white border border-slate-200/80 flex items-center justify-between text-xs shadow-2xs">
         <div className="flex items-center gap-2 text-slate-600">
-          <Radio className="w-3.5 h-3.5 text-blue-600" />
-          <span>
-            Showing <strong className="text-slate-900">{filtered.length}</strong> of <strong className="text-slate-900">{hotspots.length}</strong> observations. Click any row or action to inspect intelligence dossier.
+          <Radio className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+          <span className="text-[11px] sm:text-xs">
+            Showing <strong className="text-slate-900">{filtered.length}</strong> of <strong className="text-slate-900">{hotspots.length}</strong> observations.
           </span>
         </div>
-        <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+        <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono hidden sm:inline">
           Coordinate System: EPSG:4326 (WGS-84)
         </span>
       </div>
 
       {/* Catalog Table */}
-      <div className="flex-1 rounded-2xl border border-slate-200/80 bg-white overflow-hidden flex flex-col shadow-sm">
+      <div className="flex-1 rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white overflow-hidden flex flex-col shadow-xs">
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 text-xs p-12">
             Loading observation records...
@@ -158,19 +158,19 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
           </div>
         ) : (
           <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[700px]">
               <thead className="bg-slate-50/80 text-slate-600 font-semibold text-[11px] border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Event ID</th>
-                  <th className="px-4 py-3">Coordinates</th>
-                  <th className="px-4 py-3">FRP / Temp</th>
-                  <th className="px-4 py-3">Nearest Facility</th>
-                  <th className="px-4 py-3">Distance</th>
-                  <th className="px-4 py-3">Land Cover</th>
-                  <th className="px-4 py-3">Predicted Class</th>
-                  <th className="px-4 py-3">Risk Level</th>
-                  <th className="px-4 py-3">Persistence</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-3.5 sm:px-4 py-3">Event ID</th>
+                  <th className="px-3.5 sm:px-4 py-3">Coordinates</th>
+                  <th className="px-3.5 sm:px-4 py-3">FRP / Temp</th>
+                  <th className="px-3.5 sm:px-4 py-3">Nearest Facility</th>
+                  <th className="px-3.5 sm:px-4 py-3">Distance</th>
+                  <th className="px-3.5 sm:px-4 py-3">Land Cover</th>
+                  <th className="px-3.5 sm:px-4 py-3">Predicted Class</th>
+                  <th className="px-3.5 sm:px-4 py-3">Risk Level</th>
+                  <th className="px-3.5 sm:px-4 py-3">Persistence</th>
+                  <th className="px-3.5 sm:px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -184,35 +184,35 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
                       className="hover:bg-blue-50/30 transition-colors"
                     >
                       <td
-                        className="px-4 py-3 font-mono text-blue-600 font-bold cursor-pointer hover:underline"
+                        className="px-3.5 sm:px-4 py-3 font-mono text-blue-600 font-bold cursor-pointer hover:underline"
                         onClick={() => onSelectHotspot && onSelectHotspot(item)}
                       >
                         {item.event.id}
                       </td>
-                      <td className="px-4 py-3 font-mono text-slate-600">
+                      <td className="px-3.5 sm:px-4 py-3 font-mono text-slate-600">
                         {item.event.latitude.toFixed(4)}, {item.event.longitude.toFixed(4)}
                       </td>
-                      <td className="px-4 py-3 font-mono">
+                      <td className="px-3.5 sm:px-4 py-3 font-mono">
                         <span className="text-amber-700 font-semibold">{item.event.frp.toFixed(1)} MW</span>
                         <span className="text-slate-400 ml-1 text-[11px]">({item.event.brightness.toFixed(1)} K)</span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 font-medium truncate max-w-[180px]" title={item.geo_context.nearest_industrial_facility}>
+                      <td className="px-3.5 sm:px-4 py-3 text-slate-700 font-medium truncate max-w-[180px]" title={item.geo_context.nearest_industrial_facility}>
                         {item.geo_context.nearest_industrial_facility}
                       </td>
-                      <td className="px-4 py-3 font-mono font-medium text-emerald-700">
+                      <td className="px-3.5 sm:px-4 py-3 font-mono font-medium text-emerald-700">
                         {item.geo_context.distance_to_industry < 1000
                           ? `${Math.round(item.geo_context.distance_to_industry)} m`
                           : `${(item.geo_context.distance_to_industry / 1000).toFixed(2)} km`}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 capitalize">
+                      <td className="px-3.5 sm:px-4 py-3 text-slate-600 capitalize">
                         {item.geo_context.land_cover.replace("_", " ")}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3.5 sm:px-4 py-3">
                         <span className="text-slate-900 font-semibold">
                           {item.classification.predicted_class}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3.5 sm:px-4 py-3">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${
                             isCrit
@@ -227,7 +227,7 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
                           {item.classification.risk_score}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      <td className="px-3.5 sm:px-4 py-3 text-slate-600">
                         {item.temporal_profile.is_persistent ? (
                           <span className="text-teal-700 font-medium bg-teal-50 px-2 py-0.5 rounded text-[11px] border border-teal-200">
                             Persistent ({item.temporal_profile.persistence_days}d)
@@ -236,26 +236,26 @@ export const HotspotExplorerPage: React.FC<HotspotExplorerProps> = ({
                           <span className="text-slate-400 text-[11px]">Transient (1d)</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3.5 sm:px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => onSelectHotspot && onSelectHotspot(item)}
                             title="Inspect Detailed Dossier"
-                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 transition-colors cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
                           >
                             <FileText className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => onViewOnMap && onViewOnMap(item)}
                             title="View on Surveillance Map"
-                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 border border-slate-200 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 border border-slate-200 transition-colors cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
                           >
                             <MapPin className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => onOpenTimeline && onOpenTimeline(item)}
                             title="Temporal Timeline"
-                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-600 border border-slate-200 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-600 border border-slate-200 transition-colors cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
                           >
                             <Clock className="w-3.5 h-3.5" />
                           </button>

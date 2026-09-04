@@ -572,34 +572,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const persistentHotspot = hotspots.find(h => h.temporal_profile.is_persistent) || hotspots[0];
 
   return (
-    <div className="flex flex-col gap-6 w-full h-full pb-10">
+    <div className="flex flex-col gap-4 sm:gap-6 w-full h-full pb-10">
       {/* 1. HERO SECTION */}
-      <div className="bg-white rounded-2xl p-6 lg:p-8 relative border border-slate-200/80 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 relative border border-slate-200/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 shadow-xs overflow-hidden">
         <div className="relative z-10 max-w-2xl">
-          <div className="text-[11px] font-bold text-blue-600 tracking-wider uppercase mb-2">
+          <div className="text-[10px] sm:text-[11px] font-bold text-blue-600 tracking-wider uppercase mb-1 sm:mb-2">
             THERMAL SOURCE INTELLIGENCE
           </div>
-          <h1 className="text-2xl lg:text-3xl font-extrabold text-slate-900 mb-2.5 leading-tight tracking-tight">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900 mb-1.5 sm:mb-2.5 leading-tight tracking-tight">
             From Satellite Data to a Safer Tomorrow
           </h1>
-          <p className="text-slate-600 text-sm lg:text-[15px] mb-6 leading-relaxed max-w-xl">
+          <p className="text-slate-600 text-xs sm:text-sm lg:text-[15px] mb-4 sm:mb-6 leading-relaxed max-w-xl">
             Detect, classify and monitor thermal sources using NASA FIRMS and AI.
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             <button 
               onClick={() => {
                 if (mapContainerRef.current) {
                   mapContainerRef.current.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              className="h-10 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+              className="h-9 sm:h-10 px-4 sm:px-5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs flex items-center gap-2 cursor-pointer min-h-[38px]"
             >
               <span>View Live Map</span>
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             <button 
               onClick={() => setHowItWorksOpen(true)}
-              className="h-10 px-5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+              className="h-9 sm:h-10 px-4 sm:px-5 rounded-xl bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-xs cursor-pointer min-h-[38px]"
             >
               How It Works
             </button>
@@ -607,51 +607,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
         
         {/* Subtle satellite graphic */}
-        <div className="relative z-10 flex-shrink-0 opacity-20 md:opacity-30 pointer-events-none pr-4">
-          <Satellite className="w-24 h-24 lg:w-28 lg:h-28 text-blue-600 transform rotate-12" />
+        <div className="hidden sm:flex relative z-10 flex-shrink-0 opacity-20 md:opacity-30 pointer-events-none pr-4">
+          <Satellite className="w-20 h-20 lg:w-28 lg:h-28 text-blue-600 transform rotate-12" />
         </div>
       </div>
 
       {/* HOW IT WORKS MODAL */}
       {howItWorksOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                   <Satellite className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-base">How ThermoGuard AI Works</h3>
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base">How ThermoGuard AI Works</h3>
               </div>
               <button 
                 onClick={() => setHowItWorksOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="space-y-3 text-xs text-slate-600 leading-relaxed">
+            <div className="space-y-2.5 sm:space-y-3 text-xs text-slate-600 leading-relaxed">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60">
-                <div className="font-bold text-slate-800 text-[13px] mb-1">1. NASA FIRMS Ingestion</div>
+                <div className="font-bold text-slate-800 text-xs sm:text-[13px] mb-1">1. NASA FIRMS Ingestion</div>
                 <span>Streams real-time thermal anomaly observations from VIIRS and MODIS satellites, capturing coordinates, Fire Radiative Power (FRP), and brightness temperature.</span>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60">
-                <div className="font-bold text-slate-800 text-[13px] mb-1">2. Geospatial & Contextual Join</div>
+                <div className="font-bold text-slate-800 text-xs sm:text-[13px] mb-1">2. Geospatial & Contextual Join</div>
                 <span>Queries OpenStreetMap and PostGIS geometry to compute exact proximities to registered petrochemical refineries, power plants, forests, and agricultural parcels.</span>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60">
-                <div className="font-bold text-slate-800 text-[13px] mb-1">3. Temporal Analysis Engine</div>
+                <div className="font-bold text-slate-800 text-xs sm:text-[13px] mb-1">3. Temporal Analysis Engine</div>
                 <span>Distinguishes persistent industrial signatures (e.g. constant gas flaring over weeks) from transient ecological events (e.g. moving wildfires or single-day stubble burn).</span>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60">
-                <div className="font-bold text-slate-800 text-[13px] mb-1">4. Random Forest Classification & Explainability</div>
+                <div className="font-bold text-slate-800 text-xs sm:text-[13px] mb-1">4. Random Forest Classification & Explainability</div>
                 <span>A trained tabular ML pipeline predicts source category with probability scores and transparent geospatial evidence markers.</span>
               </div>
             </div>
             <div className="pt-2 flex justify-end">
               <button 
                 onClick={() => setHowItWorksOpen(false)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer min-h-[38px]"
               >
                 Got It
               </button>
@@ -686,32 +686,32 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* 3. OPERATIONAL INTELLIGENCE SECTION */}
       <div className="space-y-3">
         {/* SIH26162 Validation Demo Scenarios Strip */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-2.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 shadow-xs space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-2xs">
+              <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-2xs flex-shrink-0">
                 <Compass className="w-4 h-4" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-xs text-slate-900">
-                    Smart India Hackathon 2026 Validation Scenarios
+                    SIH 2026 Validation Scenarios
                   </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-mono">
-                    SIH26162 Live Suite
+                    SIH26162
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Click any benchmark scenario to instantly load ground-truth data, auto-position satellite map, and execute ML inference:
+                <p className="text-[10px] sm:text-[11px] text-slate-500">
+                  Select a calibrated benchmark scenario to inspect ground-truth telemetry & ML inference:
                 </p>
               </div>
             </div>
-            <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
-              5 Calibrated Benchmarks
+            <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono hidden sm:inline">
+              5 Benchmarks
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 pt-1">
+          <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-5 gap-2 pt-0.5">
             {DEMO_SCENARIOS.map((sc) => {
               const isSelected = activeScenario?.id === sc.id;
               const isCrit = sc.risk === "CRITICAL";
@@ -721,7 +721,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   key={sc.id}
                   type="button"
                   onClick={() => handleTriggerDemoScenario(sc)}
-                  className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                  className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-1 min-h-[44px] ${
                     isSelected
                       ? "bg-blue-50/80 border-blue-500 shadow-xs ring-1 ring-blue-500/30"
                       : "bg-slate-50/70 hover:bg-slate-100/80 border-slate-200 text-slate-700"
@@ -746,7 +746,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <div className="text-[10px] font-semibold text-blue-700 truncate">
                     {sc.category}
                   </div>
-                  <div className="text-[10px] text-slate-500 line-clamp-1">
+                  <div className="text-[10px] text-slate-500 truncate">
                     📍 {sc.location}
                   </div>
                 </button>
@@ -756,34 +756,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="text-[12px] font-bold text-slate-400 uppercase tracking-wider">
+          <div className="text-[11px] sm:text-[12px] font-bold text-slate-400 uppercase tracking-wider">
             THERMAL SOURCE OPERATIONS
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-medium">
-              Showing {hotspots.length} active detections
+            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">
+              {hotspots.length} active detections
             </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 min-w-0">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 min-w-0">
           {/* MAP CONTAINER (8 cols on xl = approx 67% width) */}
-          <div className="xl:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden flex flex-col min-w-0 h-[360px] sm:h-[400px] md:h-[430px] xl:h-[470px]">
-            <div className="h-14 px-4 sm:px-5 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 flex-shrink-0">
-                  <MapPin className="w-4 h-4" />
+          <div className="xl:col-span-8 bg-white rounded-xl sm:rounded-2xl shadow-xs border border-slate-200/80 overflow-hidden flex flex-col min-w-0 h-[360px] xs:h-[400px] sm:h-[440px] xl:h-[480px]">
+            <div className="px-3 sm:px-5 py-2.5 sm:py-0 min-h-[48px] sm:h-14 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2 sm:gap-3 flex-shrink-0">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 flex-shrink-0">
+                  <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-bold text-slate-900 text-[13px] sm:text-[14px] truncate">Thermal Events Map</h3>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate">Live NASA FIRMS VIIRS NRT data</p>
+                  <h3 className="font-bold text-slate-900 text-xs sm:text-[14px] truncate">Thermal Events Map</h3>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate">NASA FIRMS VIIRS NRT</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                  <select
                     value={selectedClass}
                     onChange={(e) => setSelectedClass(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                    className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] sm:text-xs font-medium text-slate-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer max-w-[130px] sm:max-w-none"
                   >
                     <option value="All">All Classes ({hotspots.length})</option>
                     <option value="Industrial Fire">Industrial Fire</option>
@@ -796,9 +796,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <select
                     value={selectedRisk}
                     onChange={(e) => setSelectedRisk(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                    className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] sm:text-xs font-medium text-slate-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                   >
-                    <option value="All">All Risk Levels</option>
+                    <option value="All">All Risk</option>
                     <option value="CRITICAL">Critical</option>
                     <option value="HIGH">High</option>
                     <option value="MEDIUM">Medium</option>
@@ -806,7 +806,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   </select>
                   <button 
                     onClick={loadDashboardData} 
-                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
                     title="Refresh Map Observations"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
@@ -818,23 +818,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div ref={mapContainerRef} className="w-full h-full min-h-0 z-0" />
               
               {/* Risk Legend */}
-              <div className="absolute bottom-4 left-4 z-[400] px-3 py-2 rounded-xl bg-white/95 border border-slate-200 text-xs space-y-1.5 backdrop-blur-xs shadow-xs">
-                <div className="font-bold text-slate-900 text-[10px] uppercase tracking-wider">Risk Level & Shape</div>
-                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rotate-45 bg-red-500 rounded-2xs" /><span className="text-slate-700 font-medium text-[10px]">Critical (&ge; 75)</span></div>
-                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-orange-500 rounded-2xs" /><span className="text-slate-700 font-medium text-[10px]">High (50 - 75)</span></div>
-                <div className="flex items-center gap-2"><span className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-amber-500" /><span className="text-slate-700 font-medium text-[10px]">Medium (25 - 50)</span></div>
-                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-slate-700 font-medium text-[10px]">Low (&lt; 25)</span></div>
+              <div className="absolute bottom-3 left-3 z-[400] px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-white/95 border border-slate-200 text-xs space-y-1 backdrop-blur-xs shadow-2xs max-w-[150px] sm:max-w-none">
+                <div className="font-bold text-slate-900 text-[9px] sm:text-[10px] uppercase tracking-wider">Risk Level</div>
+                <div className="flex items-center gap-1.5"><span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rotate-45 bg-red-500 rounded-2xs" /><span className="text-slate-700 font-medium text-[9px] sm:text-[10px]">Critical (&ge; 75)</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-orange-500 rounded-2xs" /><span className="text-slate-700 font-medium text-[9px] sm:text-[10px]">High (50 - 75)</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-0 h-0 border-l-[3.5px] border-r-[3.5px] border-b-[6px] border-l-transparent border-r-transparent border-b-amber-500" /><span className="text-slate-700 font-medium text-[9px] sm:text-[10px]">Medium (25 - 50)</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500" /><span className="text-slate-700 font-medium text-[9px] sm:text-[10px]">Low (&lt; 25)</span></div>
               </div>
               
               {/* Attribution */}
-              <div className="absolute bottom-2 right-2 z-[400] text-[9px] text-slate-400 font-medium bg-white/90 px-1.5 py-0.5 rounded shadow-xs border border-slate-200/50">
-                Leaflet | © OpenStreetMap contributors
+              <div className="absolute bottom-2 right-2 z-[400] text-[8px] sm:text-[9px] text-slate-400 font-medium bg-white/90 px-1.5 py-0.5 rounded shadow-2xs border border-slate-200/50">
+                Leaflet | © OSM
               </div>
             </div>
           </div>
 
-          {/* DETAIL PANEL (4 cols on xl = approx 33% width) */}
-          <div className="xl:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden flex flex-col min-w-0 h-[380px] sm:h-[420px] md:h-[430px] xl:h-[470px]">
+          {/* DETAIL PANEL (4 cols on xl = approx 33% width; stacks below on mobile) */}
+          <div className="xl:col-span-4 bg-white rounded-xl sm:rounded-2xl shadow-xs border border-slate-200/80 overflow-hidden flex flex-col min-w-0 min-h-[380px] sm:h-[440px] xl:h-[480px]">
             {selectedHotspot ? (
               <DetailPanel
                 hotspot={selectedHotspot as any}

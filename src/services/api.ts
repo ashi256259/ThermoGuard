@@ -252,34 +252,48 @@ export const apiService = {
   },
 
   /** Update lifecycle status of an operational alert */
-  async updateAlertStatus(alertId: string, status: "ACTIVE" | "ACKNOWLEDGED" | "RESOLVED" | "NEW", notes?: string): Promise<any> {
+  async updateAlertStatus(alertId: string, status: string, notes?: string, assignedTeam?: string): Promise<any> {
     const res = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
       method: "PATCH",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ status, notes })
+      body: JSON.stringify({ status, notes, assigned_team: assignedTeam })
     });
     if (!res.ok) {
-      // Fallback to POST if PATCH not supported
-      const postRes = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
-        method: "POST",
+      // Fallback to PUT
+      const putRes = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
+        method: "PUT",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ status, notes })
+        body: JSON.stringify({ status, notes, assigned_team: assignedTeam })
       });
-      if (!postRes.ok) {
-        const errJson = await postRes.json().catch(() => ({}));
-        throw new Error(errJson.message || `Failed to update alert ${alertId} status: ${postRes.status}`);
+      if (!putRes.ok) {
+        const errJson = await putRes.json().catch(() => ({}));
+        throw new Error(errJson.message || `Failed to update alert ${alertId} status: ${putRes.status}`);
       }
-      return postRes.json();
+      return putRes.json();
     }
     return res.json();
   },
 
-  /** Execute formal incident alert command action (ACKNOWLEDGE, RESOLVE, REOPEN, ESCALATE) */
-  async executeAlertAction(alertId: string, action: "ACKNOWLEDGE" | "RESOLVE" | "REOPEN" | "ESCALATE", notes?: string): Promise<any> {
+  /** Assign operational response team to an alert */
+  async assignAlertTeam(alertId: string, team: string, notes?: string): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/assign`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ team, notes })
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to assign team to alert ${alertId}: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Execute formal incident alert command action (ACKNOWLEDGE, ASSIGN, INVESTIGATE, RESOLVE, REOPEN, ESCALATE) */
+  async executeAlertAction(alertId: string, action: string, notes?: string, team?: string): Promise<any> {
     const res = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/action`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ action, notes })
+      body: JSON.stringify({ action, notes, team })
     });
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));

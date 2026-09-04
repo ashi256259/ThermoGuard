@@ -165,14 +165,14 @@ export const LoginPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {demoProfiles.map((p) => (
               <button
                 key={p.email}
                 type="button"
                 disabled={isSubmitting || isLoading}
                 onClick={() => quickLoginAs(p.email, p.pass)}
-                className="flex items-center justify-between p-2 rounded-xl bg-white hover:bg-blue-50 hover:border-blue-300 text-slate-700 border border-slate-200 text-left transition cursor-pointer group shadow-2xs disabled:opacity-50"
+                className="flex items-center justify-between p-2.5 sm:p-2 rounded-xl bg-white hover:bg-blue-50 hover:border-blue-300 text-slate-700 border border-slate-200 text-left transition cursor-pointer group shadow-2xs disabled:opacity-50 min-h-[44px]"
                 title={`Instant login as ${p.shortName} (${p.role} - ${p.clearance})`}
               >
                 <div className="truncate pr-1">

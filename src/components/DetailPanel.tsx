@@ -19,6 +19,7 @@ import { HotspotRecord, HotspotIntelligence } from "../types";
 import { TimelineChart } from "./TimelineChart";
 import { Tooltip } from "./Tooltip";
 import { ChevronRight } from "lucide-react";
+import { extractEvidenceArray } from "../utils/reportExporter";
 
 interface DetailPanelProps {
   hotspot: HotspotRecord | null;
@@ -123,7 +124,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
             title="Close panel"
           >
             <X className="w-4 h-4" />
@@ -280,18 +281,21 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
             EVIDENCE
           </div>
           <div className="space-y-1.5">
-            {classification.evidence && classification.evidence.length > 0 ? (
-              classification.evidence.map((ev, i) => (
-                <div key={i} className="text-slate-700 text-xs flex items-start gap-2 bg-white p-2 rounded-lg border border-slate-200/70 leading-relaxed">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                  <span>{ev}</span>
+            {(() => {
+              const evList = extractEvidenceArray(classification?.evidence || (classification as any)?.structured_evidence);
+              return evList.length > 0 ? (
+                evList.map((ev, i) => (
+                  <div key={i} className="text-slate-700 text-xs flex items-start gap-2 bg-white p-2 rounded-lg border border-slate-200/70 leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                    <span>{ev}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs text-slate-400 bg-white p-2 rounded-lg border border-slate-200/70 italic">
+                  Baseline thermal signature confirmed by Random Forest inference.
                 </div>
-              ))
-            ) : (
-              <div className="text-xs text-slate-400 bg-white p-2 rounded-lg border border-slate-200/70 italic">
-                Baseline thermal signature confirmed by Random Forest inference.
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
 
@@ -300,7 +304,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
           {onInspectDetails && (
             <button
               onClick={() => onInspectDetails(hotspot)}
-              className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+              className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer min-h-[44px]"
             >
               <span>Detailed Telemetry Dossier</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -309,7 +313,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
           {onOpenTimeline && (
             <button
               onClick={() => onOpenTimeline(hotspot)}
-              className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-200 shadow-sm transition-all cursor-pointer"
+              className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-200 shadow-xs transition-all cursor-pointer min-h-[44px]"
             >
               <Clock className="w-3.5 h-3.5 text-teal-600" />
               <span>Revisit Timeline</span>

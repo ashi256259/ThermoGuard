@@ -146,7 +146,7 @@ export function updateRiskAndEvidence(h: any) {
     classSpecificEvidence.push("Thermal and spatial attributes do not match standard industrial, agricultural, or wildfire profiles");
   }
 
-  h.classification.evidence = {
+  const structuredEvidence = {
     thermal: thermalEvidence,
     spatial: spatialEvidence,
     temporal: temporalEvidence,
@@ -156,8 +156,11 @@ export function updateRiskAndEvidence(h: any) {
       temporalEvidence[0],
       thermalEvidence[0],
       classSpecificEvidence[0]
-    ]
+    ].filter(Boolean)
   };
+
+  h.classification.evidence = structuredEvidence.summary;
+  h.classification.structured_evidence = structuredEvidence;
 
   // Synchronize Alert
   const eventId = raw.id || `te-${Date.now()}`;
@@ -2100,23 +2103,35 @@ async function startServer() {
       alerts = alerts.filter(a => a.severity.toUpperCase() === String(severity).toUpperCase());
     }
     if (status && status !== "All" && status !== "ALL") {
-      const sNorm = String(status).toUpperCase() === "NEW" ? "ACTIVE" : String(status).toUpperCase();
-      alerts = alerts.filter(a => a.status.toUpperCase() === sNorm);
+      const qStatus = String(status).toUpperCase();
+      alerts = alerts.filter(a => {
+        const curStatus = (a.status || a.incident_status || "ACTIVE").toUpperCase();
+        if (qStatus === "ACTIVE") return curStatus === "ACTIVE" || curStatus === "NEW";
+        if (qStatus === "NEW") return curStatus === "NEW" || curStatus === "ACTIVE";
+        return curStatus === qStatus;
+      });
     }
     res.json(alerts);
   });
 
-  app.patch("/api/alerts/:id/status", requireAlertManagementClearance, (req, res) => {
-    const { status, notes } = req.body;
+  app.patch("/api/alerts/:id/status", requireAlertManagementClearance, async (req, res) => {
+    const { status, notes, assigned_team } = req.body;
     const alertId = req.params.id;
-    const sNorm = String(status).toUpperCase() === "NEW" ? "ACTIVE" : String(status).toUpperCase();
+    const sNorm = String(status).toUpperCase();
     const user = (req as any).user;
 
     for (const h of hotspots) {
       if (h.alert && h.alert.id === alertId) {
         const prevStatus = h.alert.status;
         h.alert.status = sNorm;
+        h.alert.incident_status = sNorm;
         h.alert.updated_at = new Date().toISOString();
+
+        if (assigned_team) {
+          h.alert.assigned_team = assigned_team;
+          h.alert.assigned_by = `${user.name} (${user.badge_number || user.role})`;
+          h.alert.assigned_at = new Date().toISOString();
+        }
 
         if (sNorm === "ACKNOWLEDGED") {
           h.alert.acknowledged_by = `${user.name} (${user.badge_number || user.role})`;
@@ -2132,8 +2147,12 @@ async function startServer() {
           timestamp: new Date().toISOString(),
           action: sNorm,
           performed_by: `${user.name} [${user.role}]`,
-          notes: notes || `Status transitioned from ${prevStatus} to ${sNorm}`
+          notes: notes || `Status transitioned from ${prevStatus} to ${sNorm}${assigned_team ? ` (Assigned: ${assigned_team})` : ""}`
         });
+
+        if (isDbConnected()) {
+          await persistHotspot(h);
+        }
 
         return res.json(h.alert);
       }
@@ -2142,16 +2161,23 @@ async function startServer() {
   });
 
   app.put("/api/alerts/:id/status", requireAlertManagementClearance, async (req, res) => {
-    const { status, notes } = req.body;
+    const { status, notes, assigned_team } = req.body;
     const alertId = req.params.id;
-    const sNorm = String(status).toUpperCase() === "NEW" ? "ACTIVE" : String(status).toUpperCase();
+    const sNorm = String(status).toUpperCase();
     const user = (req as any).user;
 
     for (const h of hotspots) {
       if (h.alert && h.alert.id === alertId) {
         const prevStatus = h.alert.status;
         h.alert.status = sNorm;
+        h.alert.incident_status = sNorm;
         h.alert.updated_at = new Date().toISOString();
+
+        if (assigned_team) {
+          h.alert.assigned_team = assigned_team;
+          h.alert.assigned_by = `${user.name} (${user.badge_number || user.role})`;
+          h.alert.assigned_at = new Date().toISOString();
+        }
 
         if (sNorm === "ACKNOWLEDGED") {
           h.alert.acknowledged_by = `${user.name} (${user.badge_number || user.role})`;
@@ -2167,7 +2193,7 @@ async function startServer() {
           timestamp: new Date().toISOString(),
           action: sNorm,
           performed_by: `${user.name} [${user.role}]`,
-          notes: notes || `Status updated from ${prevStatus} to ${sNorm}`
+          notes: notes || `Status updated from ${prevStatus} to ${sNorm}${assigned_team ? ` (Assigned: ${assigned_team})` : ""}`
         });
         
         if (isDbConnected()) {
@@ -2180,13 +2206,53 @@ async function startServer() {
     return res.status(404).json({ error: `Alert ${alertId} not found` });
   });
 
+  app.post("/api/alerts/:id/assign", requireAlertManagementClearance, async (req, res) => {
+    const { team, notes } = req.body;
+    const alertId = req.params.id;
+    const user = (req as any).user;
+
+    if (!team) {
+      return res.status(400).json({ error: "team name is required for team assignment." });
+    }
+
+    for (const h of hotspots) {
+      if (h.alert && h.alert.id === alertId) {
+        h.alert.assigned_team = team;
+        h.alert.assigned_by = `${user.name} (${user.badge_number || user.role})`;
+        h.alert.assigned_at = new Date().toISOString();
+        h.alert.status = "ASSIGNED";
+        h.alert.incident_status = "ASSIGNED";
+        h.alert.updated_at = new Date().toISOString();
+
+        if (!h.alert.audit_trail) h.alert.audit_trail = [];
+        h.alert.audit_trail.push({
+          timestamp: new Date().toISOString(),
+          action: "TEAM_ASSIGNED",
+          performed_by: `${user.name} [${user.role}]`,
+          notes: notes || `Assigned to ${team} for tactical ground verification and containment.`
+        });
+
+        if (isDbConnected()) {
+          await persistHotspot(h);
+        }
+
+        return res.json({
+          status: "SUCCESS",
+          alert: h.alert,
+          message: `Team '${team}' successfully assigned to Alert ${alertId}`
+        });
+      }
+    }
+    return res.status(404).json({ error: `Alert ${alertId} not found` });
+  });
+
   app.post("/api/alerts/:id/action", requireAlertManagementClearance, async (req, res) => {
-    const { action, notes } = req.body;
+    const { action, notes, team } = req.body;
     const alertId = req.params.id;
     const user = (req as any).user;
 
     if (!action) {
-      return res.status(400).json({ error: "Action is required (ACKNOWLEDGE, RESOLVE, REOPEN, ESCALATE)" });
+      return res.status(400).json({ error: "Action is required (ACKNOWLEDGE, ASSIGN, INVESTIGATE, RESOLVE, REOPEN, ESCALATE)" });
     }
 
     const normAction = String(action).toUpperCase();
@@ -2196,18 +2262,33 @@ async function startServer() {
 
         if (normAction === "ACKNOWLEDGE" || normAction === "ACKNOWLEDGED") {
           h.alert.status = "ACKNOWLEDGED";
+          h.alert.incident_status = "ACKNOWLEDGED";
           h.alert.acknowledged_by = `${user.name} (${user.badge_number || user.role})`;
           h.alert.acknowledged_at = new Date().toISOString();
+        } else if (normAction === "ASSIGN" || normAction === "ASSIGNED") {
+          h.alert.status = "ASSIGNED";
+          h.alert.incident_status = "ASSIGNED";
+          if (team) {
+            h.alert.assigned_team = team;
+            h.alert.assigned_by = `${user.name} (${user.badge_number || user.role})`;
+            h.alert.assigned_at = new Date().toISOString();
+          }
+        } else if (normAction === "INVESTIGATE" || normAction === "INVESTIGATING") {
+          h.alert.status = "INVESTIGATING";
+          h.alert.incident_status = "INVESTIGATING";
         } else if (normAction === "RESOLVE" || normAction === "RESOLVED") {
           h.alert.status = "RESOLVED";
+          h.alert.incident_status = "RESOLVED";
           h.alert.resolved_by = `${user.name} (${user.badge_number || user.role})`;
           h.alert.resolved_at = new Date().toISOString();
           h.alert.resolution_notes = notes || "Hazard resolved and logged.";
         } else if (normAction === "REOPEN") {
           h.alert.status = "ACTIVE";
+          h.alert.incident_status = "NEW";
         } else if (normAction === "ESCALATE") {
           h.alert.severity = "CRITICAL";
           h.alert.status = "ACTIVE";
+          h.alert.incident_status = "NEW";
         }
 
         if (!h.alert.audit_trail) h.alert.audit_trail = [];
