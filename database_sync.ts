@@ -131,7 +131,15 @@ export async function persistHotspot(h: any) {
     `, [
       h.event.id + "_class", h.event.id, h.classification.predicted_class, h.classification.confidence,
       h.classification.risk_score, h.classification.risk_value, h.classification.persistence_score,
-      h.classification.model_version, JSON.stringify(h.classification.evidence), JSON.stringify({})
+      h.classification.model_version, JSON.stringify(h.classification.evidence), JSON.stringify({
+          feature_vector: h.classification.feature_vector || {},
+          class_probabilities: h.classification.class_probabilities || {},
+          inference_timestamp: h.classification.inference_timestamp || null,
+          structured_evidence: h.classification.structured_evidence || null,
+          risk_reasons: h.classification.risk_reasons || [],
+          explanation: h.classification.explanation || "",
+          risk_breakdown: h.classification.risk_breakdown || {}
+      })
     ]);
 
     // 5. Insert alerts
@@ -168,7 +176,7 @@ export async function loadAllHotspots() {
         t.id, t.latitude, t.longitude, t.timestamp, t.brightness, t.frp, t.confidence, t.satellite, t.source, t.cluster_id, t.daynight,
         g.nearest_industrial_facility, g.facility_type, g.distance_to_industry, g.land_cover, g.nearby_infrastructure, g.distance_to_infrastructure, g.nearby_road, g.distance_to_road, g.contextual_attributes,
         tp.first_seen, tp.observation_count, tp.frequency_per_week, tp.recurrence_ratio, tp.persistence_days, tp.seasonal_pattern, tp.is_persistent,
-        c.predicted_class, c.confidence AS class_confidence, c.risk_score, c.risk_value, c.persistence_score, c.model_version, c.evidence,
+        c.predicted_class, c.confidence AS class_confidence, c.risk_score, c.risk_value, c.persistence_score, c.model_version, c.evidence, c.feature_vector,
         a.id AS alert_id, a.title AS alert_title, a.description AS alert_description, a.severity AS alert_severity, a.status AS alert_status, a.facility_name AS alert_facility_name, a.action_recommended AS alert_action, a.created_at AS alert_created, a.acknowledged_at AS alert_ack
       FROM thermal_events t
       LEFT JOIN geo_context g ON t.id = g.event_id

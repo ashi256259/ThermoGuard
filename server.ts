@@ -33,17 +33,38 @@ export async function runMLClassification(hotspots: any[]) {
     if (Array.isArray(results) && results.length === hotspots.length) {
        for (let i = 0; i < hotspots.length; i++) {
           const res = results[i];
-          hotspots[i].classification.predicted_class = res.predicted_class;
-          hotspots[i].classification.confidence = res.confidence;
-          hotspots[i].classification.class_probabilities = res.class_probabilities;
-          hotspots[i].classification.model_version = res.model_version;
+          const h = hotspots[i];
+          h.classification.predicted_class = res.predicted_class;
+          h.classification.confidence = res.confidence;
+          h.classification.class_probabilities = res.class_probabilities;
+          h.classification.model_version = res.model_version;
+          h.classification.inference_timestamp = new Date().toISOString();
+          
+          if (h.intelligence && h.intelligence.prediction) {
+            h.intelligence.prediction.predicted_class = res.predicted_class;
+            h.intelligence.prediction.confidence = res.confidence;
+            h.intelligence.prediction.class_probabilities = res.class_probabilities;
+            h.intelligence.prediction.model_version = res.model_version;
+          }
        }
        console.log(`ThermoGuard: ML inference successful for ${hotspots.length} events using real Random Forest.`);
     } else {
        console.error("ThermoGuard: ML inference returned unexpected format.", results);
+       for (let h of hotspots) {
+         if (h.classification.model_version === "ML_UNAVAILABLE") {
+           // Ensure it stays unavailable
+           h.classification.predicted_class = "Other";
+         }
+       }
     }
   } catch (err: any) {
      console.error("ThermoGuard: ML inference failed. Using fallback.", err.message);
+     for (let h of hotspots) {
+       if (h.classification.model_version === "ML_UNAVAILABLE") {
+         // Keep it unavailable, DO NOT run heuristic
+         h.classification.predicted_class = "Other";
+       }
+     }
   }
 }
 
@@ -274,7 +295,7 @@ function getLandCover(lat: number, lon: number): string {
   return "mixed_rural";
 }
 
-function processThermalEvent(raw: HotspotSeed) {
+function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
   let nearestFac = INDUSTRIAL_FACILITIES[0];
   let minDist = Infinity;
   for (const fac of INDUSTRIAL_FACILITIES) {
@@ -336,69 +357,74 @@ function processThermalEvent(raw: HotspotSeed) {
     observation_frequency: tempProfile.frequency_per_week
   };
 
-  // Random Forest Decision Logic
-  const votes: Record<string, number> = {
-    "Industrial Fire": 1,
-    "Gas Flare": 1,
-    "Agricultural Burning": 1,
-    "Wildfire": 1,
-    "Mining": 1,
-    "Other": 1
-  };
+  let topClass = "Other";
+  let maxProb = 0.0;
+  let classProbabilities: Record<string, number> = { "Other": 1.0, "Industrial Fire": 0.0, "Gas Flare": 0.0, "Agricultural Burning": 0.0, "Wildfire": 0.0, "Mining": 0.0 };
+  let model_version = "ML_UNAVAILABLE";
 
-  if (isIndustrialZone || features.dist_industry_km < 0.8) {
-    if (tempProfile.persistence_days >= 7 && tempProfile.recurrence_ratio >= 0.4) {
-      votes["Gas Flare"] += 85;
-      votes["Industrial Fire"] += 8;
-      votes["Other"] += 2;
-    } else if (raw.frp >= 100 || raw.brightness >= 385) {
-      votes["Industrial Fire"] += 88;
-      votes["Gas Flare"] += 4;
+  if (isDemo) {
+    const votes: Record<string, number> = {
+      "Industrial Fire": 1,
+      "Gas Flare": 1,
+      "Agricultural Burning": 1,
+      "Wildfire": 1,
+      "Mining": 1,
+      "Other": 1
+    };
+
+    if (isIndustrialZone || features.dist_industry_km < 0.8) {
+      if (tempProfile.persistence_days >= 7 && tempProfile.recurrence_ratio >= 0.4) {
+        votes["Gas Flare"] += 85;
+        votes["Industrial Fire"] += 8;
+        votes["Other"] += 2;
+      } else if (raw.frp >= 100 || raw.brightness >= 385) {
+        votes["Industrial Fire"] += 88;
+        votes["Gas Flare"] += 4;
+        votes["Other"] += 3;
+      } else {
+        if (tempProfile.persistence_days > 3) {
+          votes["Gas Flare"] += 62;
+          votes["Industrial Fire"] += 28;
+        } else {
+          votes["Industrial Fire"] += 58;
+          votes["Gas Flare"] += 32;
+        }
+      }
+    } else if (isForestZone) {
+      if (raw.frp >= 40 || raw.brightness >= 340) {
+        votes["Wildfire"] += 90;
+        votes["Other"] += 4;
+      } else {
+        votes["Wildfire"] += 70;
+        votes["Other"] += 20;
+      }
+    } else if (isFarmlandZone) {
+      if (tempProfile.persistence_days <= 5 && raw.frp < 80) {
+        votes["Agricultural Burning"] += 88;
+        votes["Other"] += 5;
+      } else {
+        votes["Agricultural Burning"] += 65;
+        votes["Wildfire"] += 25;
+      }
+    } else if (isMiningZone || (features.dist_industry_km < 2.0 && tempProfile.persistence_days >= 14)) {
+      votes["Mining"] += 85;
+      votes["Industrial Fire"] += 7;
       votes["Other"] += 3;
     } else {
-      if (tempProfile.persistence_days > 3) {
-        votes["Gas Flare"] += 62;
-        votes["Industrial Fire"] += 28;
-      } else {
-        votes["Industrial Fire"] += 58;
-        votes["Gas Flare"] += 32;
+      votes["Other"] += 75;
+    }
+
+    const totalVotes = Object.values(votes).reduce((a, b) => a + b, 0);
+    maxProb = 0;
+    for (const [cls, v] of Object.entries(votes)) {
+      const p = Math.round((v / totalVotes) * 1000) / 1000;
+      classProbabilities[cls] = p;
+      if (p > maxProb) {
+        maxProb = p;
+        topClass = cls;
       }
     }
-  } else if (isForestZone) {
-    if (raw.frp >= 40 || raw.brightness >= 340) {
-      votes["Wildfire"] += 90;
-      votes["Other"] += 4;
-    } else {
-      votes["Wildfire"] += 70;
-      votes["Other"] += 20;
-    }
-  } else if (isFarmlandZone) {
-    if (tempProfile.persistence_days <= 5 && raw.frp < 80) {
-      votes["Agricultural Burning"] += 88;
-      votes["Other"] += 5;
-    } else {
-      votes["Agricultural Burning"] += 65;
-      votes["Wildfire"] += 25;
-    }
-  } else if (isMiningZone || (features.dist_industry_km < 2.0 && tempProfile.persistence_days >= 14)) {
-    votes["Mining"] += 85;
-    votes["Industrial Fire"] += 7;
-    votes["Other"] += 3;
-  } else {
-    votes["Other"] += 75;
-  }
-
-  const totalVotes = Object.values(votes).reduce((a, b) => a + b, 0);
-  const classProbabilities: Record<string, number> = {};
-  let topClass = "Other";
-  let maxProb = 0;
-  for (const [cls, v] of Object.entries(votes)) {
-    const p = Math.round((v / totalVotes) * 1000) / 1000;
-    classProbabilities[cls] = p;
-    if (p > maxProb) {
-      maxProb = p;
-      topClass = cls;
-    }
+    model_version = "heuristic_v1.0";
   }
 
   // Risk Scoring (Independent of model confidence)
@@ -660,7 +686,7 @@ function processThermalEvent(raw: HotspotSeed) {
       confidence_quality: confidenceQuality,
       quality_reason: qualityReason,
       interpretation_notice: "Model confidence represents the highest multi-class probability assigned by the trained Random Forest decision tree ensemble. It measures classifier certainty based on input feature vectors and does NOT represent verified real-world ground-truth accuracy.",
-      model_version: "random_forest_v1.0.0",
+      model_version: model_version,
       class_probabilities: classProbabilities,
       runner_up_class: runnerUpClass,
       runner_up_probability: runnerUpProb
@@ -692,7 +718,7 @@ function processThermalEvent(raw: HotspotSeed) {
       risk_score: riskBand,
       risk_value: totalRiskVal,
       persistence_score: Math.min(1.0, Math.round((tempProfile.persistence_days / 60) * 100) / 100),
-      model_version: "random_forest_v1.0.0",
+      model_version: model_version,
       evidence: structuredEvidence.summary,
       feature_vector: features,
       class_probabilities: classProbabilities,
@@ -731,8 +757,7 @@ async function startServer() {
   }
   if (!dbInitialized || hotspots.length === 0) {
     console.log("ThermoGuard: No DB records found or DB offline. Seeding from RAW_HOTSPOTS.");
-    hotspots = RAW_HOTSPOTS.map((h) => processThermalEvent(h));
-    await runMLClassification(hotspots);
+    hotspots = RAW_HOTSPOTS.map((h) => processThermalEvent(h, true));
     if (dbInitialized) {
       for (const h of hotspots) {
         await persistHotspot(h);
@@ -1306,7 +1331,7 @@ async function startServer() {
         accepted++;
       }
 
-      const enrichedEvents = newSeeds.map(processThermalEvent);
+      const enrichedEvents = newSeeds.map(s => processThermalEvent(s, false));
       await runMLClassification(enrichedEvents);
 
       if (isDbConnected()) {
@@ -1406,7 +1431,7 @@ async function startServer() {
           accepted++;
         }
 
-        const enrichedEvents = newSeeds.map(processThermalEvent);
+        const enrichedEvents = newSeeds.map(s => processThermalEvent(s, false));
         await runMLClassification(enrichedEvents);
         
         if (isDbConnected()) {
@@ -1839,7 +1864,7 @@ async function startServer() {
         },
         classifier: {
           model_name: "Random Forest Decision Tree Ensemble",
-          model_version: "random_forest_v1.0.0",
+          model_version: model_version,
           features_extracted: 14,
           inference_engine: "Synchronous Tabular Extractor",
           classes_supported: ["Industrial Fire", "Gas Flare", "Agricultural Burning", "Wildfire", "Mining", "Other"]
@@ -2032,7 +2057,7 @@ async function startServer() {
     }
     // Fallback default metadata
     res.json({
-      model_version: "random_forest_v1.0.0",
+      model_version: model_version,
       algorithm: "RandomForestClassifier",
       framework: "scikit-learn",
       target_classes: ["Industrial Fire", "Gas Flare", "Agricultural Burning", "Wildfire", "Mining", "Other"],
@@ -2111,7 +2136,7 @@ async function startServer() {
       predicted_class: predictedClass,
       confidence: conf,
       class_probabilities: probs,
-      model_version: "random_forest_v1.0.0"
+      model_version: model_version
     });
   });
 
@@ -2135,7 +2160,7 @@ async function startServer() {
       daynight: "D"
     };
 
-    const analyzed = processThermalEvent(newRaw);
+    const analyzed = processThermalEvent(newRaw, false);
     await runMLClassification([analyzed]);
     
     // Add to session hotspots so it displays on the GIS map immediately
@@ -2213,8 +2238,7 @@ async function startServer() {
   // Scenario Loading Endpoint for judges and demonstrators
   app.post("/api/scenarios/:id/load", async (req, res) => {
     const scenarioId = req.params.id;
-    const demoEvents = RAW_HOTSPOTS.map((h) => processThermalEvent(h));
-    await runMLClassification(demoEvents);
+    const demoEvents = RAW_HOTSPOTS.map((h) => processThermalEvent(h, true));
     
     // Ensure all demo hotspots are loaded
     hotspots = [...demoEvents];
@@ -2242,8 +2266,7 @@ async function startServer() {
 
   // Reset to Demo Baseline
   app.post("/api/scenarios/reset-demo", async (req, res) => {
-    hotspots = RAW_HOTSPOTS.map((h) => processThermalEvent(h));
-    await runMLClassification(hotspots);
+    hotspots = RAW_HOTSPOTS.map((h) => processThermalEvent(h, true));
     res.json({
       status: "SUCCESS",
       total_loaded: hotspots.length,

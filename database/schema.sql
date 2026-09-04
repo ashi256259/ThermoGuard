@@ -163,8 +163,7 @@ BEGIN
     LOOP
         EXECUTE format('
             DROP POLICY IF EXISTS "Allow all for backend" ON %I;
-            CREATE POLICY "Allow all for backend" ON %I FOR ALL USING (true) WITH CHECK (true);
-        ', t_name, t_name);
+', t_name);
     END LOOP;
 END
 $$;
