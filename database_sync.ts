@@ -127,7 +127,15 @@ export async function persistHotspot(h: any) {
         model_version, evidence, feature_vector
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-      ) ON CONFLICT (id) DO NOTHING
+      ) ON CONFLICT (id) DO UPDATE SET
+        predicted_class = EXCLUDED.predicted_class,
+        confidence = EXCLUDED.confidence,
+        risk_score = EXCLUDED.risk_score,
+        risk_value = EXCLUDED.risk_value,
+        persistence_score = EXCLUDED.persistence_score,
+        model_version = EXCLUDED.model_version,
+        evidence = EXCLUDED.evidence,
+        feature_vector = EXCLUDED.feature_vector
     `, [
       h.event.id + "_class", h.event.id, h.classification.predicted_class, h.classification.confidence,
       h.classification.risk_score, h.classification.risk_value, h.classification.persistence_score,
@@ -187,62 +195,75 @@ export async function loadAllHotspots() {
       LIMIT 1000
     `);
     
-    return result.rows.map(row => ({
-      event: {
-        id: row.id,
-        latitude: row.latitude,
-        longitude: row.longitude,
-        timestamp: row.timestamp,
-        brightness: row.brightness,
-        frp: row.frp,
-        confidence: row.confidence,
-        satellite: row.satellite,
-        source: row.source,
-        cluster_id: row.cluster_id,
-        daynight: row.daynight
-      },
-      geo_context: {
-        nearest_industrial_facility: row.nearest_industrial_facility,
-        facility_type: row.facility_type,
-        distance_to_industry: row.distance_to_industry,
-        land_cover: row.land_cover,
-        nearby_infrastructure: row.nearby_infrastructure,
-        distance_to_infrastructure: row.distance_to_infrastructure,
-        nearby_road: row.nearby_road,
-        distance_to_road: row.distance_to_road,
-        spatial_flags: row.contextual_attributes || {}
-      },
-      temporal_profile: {
-        cluster_id: row.cluster_id,
-        first_seen: row.first_seen,
-        observation_count: row.observation_count,
-        frequency_per_week: row.frequency_per_week,
-        recurrence_ratio: row.recurrence_ratio,
-        persistence_days: row.persistence_days,
-        seasonal_pattern: row.seasonal_pattern,
-        is_persistent: row.is_persistent
-      },
-      classification: {
-        predicted_class: row.predicted_class,
-        confidence: row.class_confidence,
-        risk_score: row.risk_score,
-        risk_value: row.risk_value,
-        persistence_score: row.persistence_score,
-        model_version: row.model_version,
-        evidence: row.evidence || []
-      },
-      alert: row.alert_id ? {
-        id: row.alert_id,
-        status: row.alert_status,
-        severity: row.alert_severity,
-        title: row.alert_title,
-        description: row.alert_description,
-        facility_name: row.alert_facility_name,
-        action_recommended: row.alert_action,
-        created_at: row.alert_created,
-        acknowledged_at: row.alert_ack
-      } : null
-    }));
+    return result.rows.map(row => {
+      const fvData = typeof row.feature_vector === "string" 
+        ? JSON.parse(row.feature_vector) 
+        : (row.feature_vector || {});
+
+      return {
+        event: {
+          id: row.id,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          timestamp: row.timestamp,
+          brightness: row.brightness,
+          frp: row.frp,
+          confidence: row.confidence,
+          satellite: row.satellite,
+          source: row.source,
+          cluster_id: row.cluster_id,
+          daynight: row.daynight
+        },
+        geo_context: {
+          nearest_industrial_facility: row.nearest_industrial_facility,
+          facility_type: row.facility_type,
+          distance_to_industry: row.distance_to_industry,
+          land_cover: row.land_cover,
+          nearby_infrastructure: row.nearby_infrastructure,
+          distance_to_infrastructure: row.distance_to_infrastructure,
+          nearby_road: row.nearby_road,
+          distance_to_road: row.distance_to_road,
+          spatial_flags: row.contextual_attributes || {}
+        },
+        temporal_profile: {
+          cluster_id: row.cluster_id,
+          first_seen: row.first_seen,
+          observation_count: row.observation_count,
+          frequency_per_week: row.frequency_per_week,
+          recurrence_ratio: row.recurrence_ratio,
+          persistence_days: row.persistence_days,
+          seasonal_pattern: row.seasonal_pattern,
+          is_persistent: row.is_persistent
+        },
+        classification: {
+          predicted_class: row.predicted_class,
+          confidence: row.class_confidence,
+          risk_score: row.risk_score,
+          risk_value: row.risk_value,
+          persistence_score: row.persistence_score,
+          model_version: row.model_version,
+          evidence: row.evidence || [],
+          class_probabilities: fvData.class_probabilities || {},
+          feature_vector: fvData.feature_vector || {},
+          inference_timestamp: fvData.inference_timestamp || null,
+          structured_evidence: fvData.structured_evidence || null,
+          risk_reasons: fvData.risk_reasons || [],
+          explanation: fvData.explanation || "",
+          risk_breakdown: fvData.risk_breakdown || {}
+        },
+        alert: row.alert_id ? {
+          id: row.alert_id,
+          status: row.alert_status,
+          severity: row.alert_severity,
+          title: row.alert_title,
+          description: row.alert_description,
+          facility_name: row.alert_facility_name,
+          action_recommended: row.alert_action,
+          created_at: row.alert_created,
+          acknowledged_at: row.alert_ack
+        } : null
+      };
+    });
   } catch (err) {
     console.error("ThermoGuard: Error loading hotspots from DB:", err);
     return [];

@@ -72,7 +72,7 @@ export interface HotspotItem {
     is_persistent: boolean;
   };
   classification: {
-    predicted_class: "Industrial Fire" | "Gas Flare" | "Agricultural Burning" | "Wildfire" | "Mining" | "Other";
+    predicted_class: "Industrial Fire" | "Gas Flare" | "Agricultural Burning" | "Wildfire" | "Mining" | "Other" | "ML_UNAVAILABLE";
     confidence: number;
     risk_score: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
     risk_value: number;
@@ -587,6 +587,15 @@ export const apiService = {
     });
     if (!res.ok) {
       throw new Error(`FIRMS ingestion failed with status: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Get ML model metadata and specification */
+  async getModelInfo(): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/ml/model-info`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch ML model info: ${res.status}`);
     }
     return res.json();
   },

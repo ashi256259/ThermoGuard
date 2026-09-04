@@ -7,23 +7,197 @@ const execFileAsync = promisify(execFile);
 import { createServer as createViteServer } from "vite";
 import { initDb, loadAllHotspots, persistHotspot, isDbConnected } from "./database_sync";
 
+export function updateRiskAndEvidence(h: any) {
+  const topClass = h.classification.predicted_class || "Other";
+  const raw = h.event;
+  const geoContext = h.geo_context;
+  const tempProfile = h.temporal_profile;
+  const minDist = geoContext.distance_to_industry || 99999; // in meters
+
+  // 1. Thermal Intensity Component
+  const frpNorm = Math.min(100, (raw.frp / 150) * 100);
+  const brightNorm = Math.min(100, Math.max(0, (raw.brightness - 310) / 90) * 100);
+  const sThermal = 0.65 * frpNorm + 0.35 * brightNorm;
+
+  // 2. Spatial Proximity Component
+  let sProximity = 5;
+  if (minDist <= 300) sProximity = 100;
+  else if (minDist <= 1000) sProximity = 80;
+  else if (minDist <= 3000) sProximity = 50;
+  else if (minDist <= 10000) sProximity = 20;
+
+  if (topClass === "Gas Flare") {
+    sProximity *= 0.35; // Controlled routine operation in flare stack
+  }
+
+  // 3. Source Hazard Factor
+  const sourceHazardWeights: Record<string, number> = {
+    "Industrial Fire": 1.0,
+    "Wildfire": 0.85,
+    "Mining": 0.55,
+    "Agricultural Burning": 0.40,
+    "Gas Flare": 0.25,
+    "Other": 0.30
+  };
+  const sSource = (sourceHazardWeights[topClass] || 0.3) * 100;
+
+  // 4. Temporal Persistence Factor
+  let sTemporal = 50;
+  if (tempProfile.persistence_days <= 2 && sThermal > 60) {
+    sTemporal = 90; // Sudden acute outbreak
+  } else if (tempProfile.persistence_days >= 30) {
+    sTemporal = 35; // Stable continuous emission
+  }
+
+  const totalRiskVal = Math.round(
+    (30 / 92) * sThermal + (25 / 92) * sProximity + (25 / 92) * sSource + (12 / 92) * sTemporal
+  );
+
+  let riskBand: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "LOW";
+  if (totalRiskVal >= 75) riskBand = "CRITICAL";
+  else if (totalRiskVal >= 55) riskBand = "HIGH";
+  else if (totalRiskVal >= 30) riskBand = "MEDIUM";
+
+  // Override thresholds for clear catastrophic risks
+  if (topClass === "Industrial Fire" && (raw.frp >= 60 || minDist <= 500)) {
+    riskBand = "CRITICAL";
+  } else if (topClass === "Wildfire" && (raw.frp >= 35 || raw.brightness >= 345)) {
+    riskBand = "HIGH";
+  }
+
+  h.classification.risk_score = riskBand;
+  h.classification.risk_value = totalRiskVal;
+  h.classification.persistence_score = tempProfile.is_persistent
+    ? 0.92
+    : Math.min(0.9, (tempProfile.persistence_days / 30) * 0.7 + tempProfile.recurrence_ratio * 0.3);
+
+  // Categorized Structured Evidence
+  const thermalEvidence: string[] = [];
+  if (raw.frp >= 100) {
+    thermalEvidence.push(`Severe thermal radiative power: ${raw.frp.toFixed(1)} MW (exceeds high-intensity industrial/wildfire threshold)`);
+  } else if (raw.frp >= 40) {
+    thermalEvidence.push(`Moderate-to-high radiative power: ${raw.frp.toFixed(1)} MW (consistent with flare stacks or active burn front)`);
+  } else {
+    thermalEvidence.push(`Low-to-moderate thermal intensity: ${raw.frp.toFixed(1)} MW (steady controlled emission or smoldering)`);
+  }
+  thermalEvidence.push(`Brightness temperature: ${raw.brightness.toFixed(1)} K recorded by ${raw.satellite}`);
+  thermalEvidence.push(`FIRMS satellite detection confidence: ${raw.confidence}% (multi-band spectral anomaly verification)`);
+  thermalEvidence.push(`Observation timing: ${raw.daynight === 'N' ? 'Nighttime (zero solar glint reflection)' : 'Daytime overpass'}`);
+
+  const spatialEvidence: string[] = [];
+  if (minDist <= 300) {
+    spatialEvidence.push(`Immediate industrial perimeter: ${Math.round(minDist)} m to ${geoContext.nearest_industrial_facility}`);
+  } else if (minDist <= 1000) {
+    spatialEvidence.push(`Industrial proximity: ${Math.round(minDist)} m to ${geoContext.nearest_industrial_facility}`);
+  } else if (minDist <= 5000) {
+    spatialEvidence.push(`Located ${Math.round(minDist / 100) / 10} km from nearest industrial installation (${geoContext.nearest_industrial_facility})`);
+  } else {
+    spatialEvidence.push(`Remote from industrial installations: nearest facility is ${Math.round(minDist / 1000)} km away (${geoContext.nearest_industrial_facility})`);
+  }
+  spatialEvidence.push(`Land-use / Land-cover context: Zoned as ${geoContext.land_cover.replace(/_/g, " ")}`);
+
+  const temporalEvidence: string[] = [];
+  if (tempProfile.persistence_days >= 14) {
+    temporalEvidence.push(`Persistent multi-temporal source: active across ${tempProfile.persistence_days} days with ${tempProfile.observation_count} satellite detections`);
+  } else if (tempProfile.persistence_days <= 2) {
+    temporalEvidence.push(`Acute sudden-onset signature: detected across ${tempProfile.persistence_days} day(s) (no continuous baseline)`);
+  } else {
+    temporalEvidence.push(`Activity spanning ${tempProfile.persistence_days} days with ${tempProfile.observation_count} detection pass(es)`);
+  }
+  temporalEvidence.push(`Recurrence ratio: ${Math.round(tempProfile.recurrence_ratio * 100)}% of orbital revisit passes`);
+
+  const classSpecificEvidence: string[] = [];
+  if (topClass === "Gas Flare") {
+    classSpecificEvidence.push("Persistent stationary emission footprint co-located with refinery or petrochemical infrastructure");
+    classSpecificEvidence.push("High multi-week recurrence without lateral geometric expansion indicates controlled flare stack combustion");
+  } else if (topClass === "Industrial Fire") {
+    classSpecificEvidence.push("Elevated thermal radiative surge within industrial boundary indicates uncontrolled combustion outbreak");
+    classSpecificEvidence.push("Acute short-duration onset differentiates event from routine continuous flaring");
+  } else if (topClass === "Agricultural Burning") {
+    classSpecificEvidence.push("Agricultural cropland context remote from industrial installations");
+    classSpecificEvidence.push("Transient post-harvest seasonal residue combustion pattern with rapid spatial dissipation");
+  } else if (topClass === "Wildfire") {
+    classSpecificEvidence.push("Location within dense forest reserve canopy with zero industrial infrastructure");
+    classSpecificEvidence.push("High FRP biomass combustion signature characteristic of uncontained wildfire front");
+  } else if (topClass === "Mining") {
+    classSpecificEvidence.push("Spatial co-location with open-cast mining excavation pit or coal spoil heap");
+    classSpecificEvidence.push("Recurring low-velocity thermal profile characteristic of spontaneous subsurface coal oxidation");
+  } else {
+    classSpecificEvidence.push("Thermal and spatial attributes do not match standard industrial, agricultural, or wildfire profiles");
+  }
+
+  h.classification.evidence = {
+    thermal: thermalEvidence,
+    spatial: spatialEvidence,
+    temporal: temporalEvidence,
+    class_specific: classSpecificEvidence,
+    summary: [
+      spatialEvidence[0],
+      temporalEvidence[0],
+      thermalEvidence[0],
+      classSpecificEvidence[0]
+    ]
+  };
+
+  // Synchronize Alert
+  if (["CRITICAL", "HIGH"].includes(riskBand)) {
+    h.alert = {
+      id: `ALT-${raw.id}`,
+      alert_id: `ALT-${raw.id}`,
+      severity: riskBand,
+      title: `${riskBand === "CRITICAL" ? "CRITICAL EMERGENCY" : "HIGH PRIORITY ALERT"}: ${topClass} Detected`,
+      description: `${topClass} identified with ${Math.round(h.classification.confidence * 100)}% model confidence. Radiative Power: ${raw.frp.toFixed(1)} MW at ${raw.latitude.toFixed(4)}, ${raw.longitude.toFixed(4)}.`,
+      facility_name: geoContext.nearest_industrial_facility,
+      action_recommended: topClass === "Industrial Fire" ? "Dispatch industrial emergency brigade and alert state pollution control board." : "Deploy forestry rapid response team and establish containment line.",
+      created_at: new Date().toISOString(),
+      status: "ACTIVE"
+    };
+  } else {
+    h.alert = null;
+  }
+
+  if (h.intelligence && h.intelligence.prediction) {
+    h.intelligence.prediction.predicted_class = topClass;
+    h.intelligence.prediction.confidence = h.classification.confidence;
+    h.intelligence.prediction.risk_score = riskBand;
+    h.intelligence.prediction.risk_value = totalRiskVal;
+    h.intelligence.prediction.class_probabilities = h.classification.class_probabilities;
+    h.intelligence.prediction.model_version = h.classification.model_version;
+  }
+}
+
 export async function runMLClassification(hotspots: any[]) {
   if (hotspots.length === 0) return;
   try {
     const inputFeatures = hotspots.map(h => {
-       const f = h.classification.feature_vector;
+       const f = h.classification.feature_vector || {};
        return {
-          brightness: f.brightness,
-          frp: f.frp,
-          firms_confidence: f.firms_confidence,
-          distance_to_industry_km: f.dist_industry_km,
-          industrial_nearby_flag: f.is_industrial_land,
-          forest_context: f.is_forest_land,
-          agricultural_context: f.is_farmland,
-          mining_nearby_flag: f.is_mining_land,
-          persistence_score: f.persistence_days_log,
-          recurrence_ratio: f.recurrence_ratio,
-          observation_frequency: f.observation_frequency
+          brightness: f.brightness ?? h.event.brightness ?? 330.0,
+          frp: f.frp ?? h.event.frp ?? 25.0,
+          firms_confidence: f.firms_confidence ?? (h.event.confidence / 100) ?? 0.80,
+          scan: f.scan ?? 0.40,
+          track: f.track ?? 0.40,
+          daynight_flag: f.daynight_flag ?? (h.event.daynight === 'N' ? 0.0 : 1.0),
+          distance_to_industry_km: f.distance_to_industry_km ?? f.dist_industry_km ?? ((h.geo_context?.distance_to_industry || 50000) / 1000),
+          industrial_facility_count: f.industrial_facility_count ?? (h.geo_context?.contextual_attributes?.facilities_within_10km || 0),
+          industrial_nearby_flag: f.industrial_nearby_flag ?? f.is_industrial_land ?? (h.geo_context?.spatial_flags?.is_industrial_zone ? 1.0 : 0.0),
+          mining_nearby_flag: f.mining_nearby_flag ?? f.is_mining_land ?? (h.geo_context?.spatial_flags?.is_mining_zone ? 1.0 : 0.0),
+          infrastructure_nearby_flag: f.infrastructure_nearby_flag ?? (h.geo_context?.spatial_flags?.is_infrastructure_nearby ? 1.0 : 0.0),
+          forest_context: f.forest_context ?? f.is_forest_land ?? (h.geo_context?.spatial_flags?.is_forest_zone ? 1.0 : 0.0),
+          agricultural_context: f.agricultural_context ?? f.is_farmland ?? (h.geo_context?.spatial_flags?.is_farmland_zone ? 1.0 : 0.0),
+          urban_context: f.urban_context ?? 0.0,
+          open_land_context: f.open_land_context ?? 0.0,
+          observation_count: f.observation_count ?? h.temporal_profile?.observation_count ?? 1.0,
+          active_days: f.active_days ?? h.temporal_profile?.persistence_days ?? 1.0,
+          active_duration: f.active_duration ?? h.temporal_profile?.persistence_days ?? 1.0,
+          observation_frequency: f.observation_frequency ?? h.temporal_profile?.frequency_per_week ?? 1.0,
+          recurrence_count: f.recurrence_count ?? Math.round((h.temporal_profile?.persistence_days || 1) * (h.temporal_profile?.recurrence_ratio || 0.1)),
+          recurrence_ratio: f.recurrence_ratio ?? h.temporal_profile?.recurrence_ratio ?? 0.1,
+          average_revisit_interval: f.average_revisit_interval ?? 24.0,
+          median_revisit_interval: f.median_revisit_interval ?? 24.0,
+          persistence_score: f.persistence_score ?? (h.temporal_profile?.is_persistent ? 0.85 : 0.1),
+          seasonality_score: f.seasonality_score ?? 0.2,
+          seasonal_concentration: f.seasonal_concentration ?? 0.2
        };
     });
     const { stdout, stderr } = await execFileAsync("python3", ["ml_batch_predict.py", JSON.stringify(inputFeatures)]);
@@ -40,29 +214,26 @@ export async function runMLClassification(hotspots: any[]) {
           h.classification.model_version = res.model_version;
           h.classification.inference_timestamp = new Date().toISOString();
           
-          if (h.intelligence && h.intelligence.prediction) {
-            h.intelligence.prediction.predicted_class = res.predicted_class;
-            h.intelligence.prediction.confidence = res.confidence;
-            h.intelligence.prediction.class_probabilities = res.class_probabilities;
-            h.intelligence.prediction.model_version = res.model_version;
-          }
+          updateRiskAndEvidence(h);
        }
        console.log(`ThermoGuard: ML inference successful for ${hotspots.length} events using real Random Forest.`);
     } else {
        console.error("ThermoGuard: ML inference returned unexpected format.", results);
-       for (let h of hotspots) {
-         if (h.classification.model_version === "ML_UNAVAILABLE") {
-           // Ensure it stays unavailable
-           h.classification.predicted_class = "Other";
+       for (const h of hotspots) {
+         if (!h.classification.predicted_class || h.classification.predicted_class === "Other") {
+           h.classification.predicted_class = "ML_UNAVAILABLE";
+           h.classification.confidence = 0.0;
+           h.classification.model_version = "ML_UNAVAILABLE";
          }
        }
     }
   } catch (err: any) {
-     console.error("ThermoGuard: ML inference failed. Using fallback.", err.message);
-     for (let h of hotspots) {
-       if (h.classification.model_version === "ML_UNAVAILABLE") {
-         // Keep it unavailable, DO NOT run heuristic
-         h.classification.predicted_class = "Other";
+     console.error("ThermoGuard: ML inference failed. Marking ML_UNAVAILABLE.", err.message);
+     for (const h of hotspots) {
+       if (!h.classification.predicted_class || h.classification.predicted_class === "Other") {
+         h.classification.predicted_class = "ML_UNAVAILABLE";
+         h.classification.confidence = 0.0;
+         h.classification.model_version = "ML_UNAVAILABLE";
        }
      }
   }
@@ -93,6 +264,7 @@ interface HotspotSeed {
 }
 
 const INDUSTRIAL_FACILITIES = [
+  // Oil Refineries & Petrochemicals
   {
     name: "Jamnagar Mega Refinery Complex",
     facility_type: "oil_refinery",
@@ -110,12 +282,117 @@ const INDUSTRIAL_FACILITIES = [
     tags: { hazard_tier: "Major_Hazard_Installation", tanks: 34 }
   },
   {
-    name: "Gevra & Dipka Opencast Coal Mines",
-    facility_type: "mine",
-    operator: "South Eastern Coalfields Ltd.",
-    latitude: 22.3418,
-    longitude: 82.5934,
-    tags: { mine_type: "open_cast", seam_combustion_risk: "high" }
+    name: "Vadodara IOCL Gujarat Refinery",
+    facility_type: "oil_refinery",
+    operator: "Indian Oil Corporation",
+    latitude: 22.3680,
+    longitude: 73.1250,
+    tags: { capacity_mmtpa: 13.7 }
+  },
+  {
+    name: "Mumbai BPCL Mahul Refinery",
+    facility_type: "oil_refinery",
+    operator: "Bharat Petroleum",
+    latitude: 19.0100,
+    longitude: 72.8950,
+    tags: { capacity_mmtpa: 12.0 }
+  },
+  {
+    name: "Mangalore MRPL Refinery",
+    facility_type: "oil_refinery",
+    operator: "MRPL / ONGC",
+    latitude: 12.9920,
+    longitude: 74.8280,
+    tags: { capacity_mmtpa: 15.0 }
+  },
+  {
+    name: "Kochi BPCL Refinery",
+    facility_type: "oil_refinery",
+    operator: "Bharat Petroleum",
+    latitude: 9.9930,
+    longitude: 76.3580,
+    tags: { capacity_mmtpa: 15.5 }
+  },
+  {
+    name: "Chennai Manali CPCL Refinery",
+    facility_type: "oil_refinery",
+    operator: "CPCL / IOCL",
+    latitude: 13.1630,
+    longitude: 80.2620,
+    tags: { capacity_mmtpa: 10.5 }
+  },
+  {
+    name: "Visakhapatnam HPCL Refinery",
+    facility_type: "oil_refinery",
+    operator: "Hindustan Petroleum",
+    latitude: 17.6880,
+    longitude: 83.2450,
+    tags: { capacity_mmtpa: 15.0 }
+  },
+  {
+    name: "Paradip IOCL Mega Refinery",
+    facility_type: "oil_refinery",
+    operator: "Indian Oil Corporation",
+    latitude: 20.2740,
+    longitude: 86.6710,
+    tags: { capacity_mmtpa: 15.0 }
+  },
+  {
+    name: "Haldia IOCL Refinery",
+    facility_type: "oil_refinery",
+    operator: "Indian Oil Corporation",
+    latitude: 22.0520,
+    longitude: 88.0820,
+    tags: { capacity_mmtpa: 8.0 }
+  },
+  {
+    name: "Panipat IOCL Refinery & Naphtha Cracker",
+    facility_type: "oil_refinery",
+    operator: "Indian Oil Corporation",
+    latitude: 29.4310,
+    longitude: 76.8830,
+    tags: { capacity_mmtpa: 15.0 }
+  },
+  {
+    name: "Mathura IOCL Refinery",
+    facility_type: "oil_refinery",
+    operator: "Indian Oil Corporation",
+    latitude: 27.3010,
+    longitude: 77.7020,
+    tags: { capacity_mmtpa: 8.0 }
+  },
+  {
+    name: "Bina Bharat Oman Refinery",
+    facility_type: "oil_refinery",
+    operator: "BPCL / BORL",
+    latitude: 24.1920,
+    longitude: 78.1820,
+    tags: { capacity_mmtpa: 7.8 }
+  },
+  {
+    name: "Bathinda HMEL Refinery",
+    facility_type: "oil_refinery",
+    operator: "HMEL",
+    latitude: 29.9830,
+    longitude: 74.9310,
+    tags: { capacity_mmtpa: 11.3 }
+  },
+  {
+    name: "Numaligarh Refinery Assam",
+    facility_type: "oil_refinery",
+    operator: "NRL / Oil India",
+    latitude: 26.5820,
+    longitude: 93.7630,
+    tags: { capacity_mmtpa: 3.0 }
+  },
+  // Major Steel Works
+  {
+    name: "Bellary JSW Vijayanagar Steel Complex",
+    facility_type: "steel_plant",
+    operator: "JSW Steel",
+    latitude: 15.1950,
+    longitude: 76.6680,
+    tags: { blast_furnaces: 4, coke_ovens: 6 }
   },
   {
     name: "Angul Integrated Steel & Pellet Plant",
@@ -126,12 +403,126 @@ const INDUSTRIAL_FACILITIES = [
     tags: { blast_furnaces: 2, coke_ovens: 4 }
   },
   {
+    name: "Tata Steel Jamshedpur Works",
+    facility_type: "steel_plant",
+    operator: "Tata Steel",
+    latitude: 22.8010,
+    longitude: 86.2020,
+    tags: { blast_furnaces: 4 }
+  },
+  {
+    name: "Rourkela Steel Plant",
+    facility_type: "steel_plant",
+    operator: "SAIL",
+    latitude: 22.2230,
+    longitude: 84.8710,
+    tags: { blast_furnaces: 3 }
+  },
+  {
+    name: "Bhilai Steel Plant",
+    facility_type: "steel_plant",
+    operator: "SAIL",
+    latitude: 21.1820,
+    longitude: 81.3810,
+    tags: { blast_furnaces: 4 }
+  },
+  {
+    name: "Bokaro Steel Plant",
+    facility_type: "steel_plant",
+    operator: "SAIL",
+    latitude: 23.6710,
+    longitude: 86.1720,
+    tags: { blast_furnaces: 4 }
+  },
+  // Major Mining Basins & Pits
+  {
+    name: "Bellary-Sandur Iron Ore Pithead",
+    facility_type: "mine",
+    operator: "NMDC / Sandur Mining",
+    latitude: 15.0850,
+    longitude: 76.5450,
+    tags: { mine_type: "open_cast_iron_ore" }
+  },
+  {
+    name: "Gevra & Dipka Opencast Coal Mines",
+    facility_type: "mine",
+    operator: "South Eastern Coalfields Ltd.",
+    latitude: 22.3418,
+    longitude: 82.5934,
+    tags: { mine_type: "open_cast", seam_combustion_risk: "high" }
+  },
+  {
+    name: "Jharia Coalfield Pithead",
+    facility_type: "mine",
+    operator: "Bharat Coking Coal Ltd.",
+    latitude: 23.7481,
+    longitude: 86.4162,
+    tags: { mine_type: "coal_fire_zone" }
+  },
+  {
+    name: "Singrauli Coal Basin Pit",
+    facility_type: "mine",
+    operator: "Northern Coalfields Ltd.",
+    latitude: 24.1120,
+    longitude: 82.6840,
+    tags: { mine_type: "open_cast_coal" }
+  },
+  {
+    name: "Neyveli Lignite Open Pit",
+    facility_type: "mine",
+    operator: "NLC India",
+    latitude: 11.5830,
+    longitude: 79.4850,
+    tags: { mine_type: "lignite_pit" }
+  },
+  {
+    name: "Keonjhar Barbil Iron Ore Mines",
+    facility_type: "mine",
+    operator: "Odisha Mining Corp",
+    latitude: 22.1150,
+    longitude: 85.3850,
+    tags: { mine_type: "open_cast_iron" }
+  },
+  // Thermal Power Stations
+  {
     name: "NTPC Vindhyachal Super Thermal Power",
     facility_type: "power_station",
     operator: "NTPC Ltd.",
     latitude: 24.0984,
     longitude: 82.6641,
     tags: { capacity_mw: 4760 }
+  },
+  {
+    name: "NTPC Ramagundam Super Thermal",
+    facility_type: "power_station",
+    operator: "NTPC Ltd.",
+    latitude: 18.7530,
+    longitude: 79.5220,
+    tags: { capacity_mw: 2600 }
+  },
+  {
+    name: "Mundra Thermal Power Plant",
+    facility_type: "power_station",
+    operator: "Adani Power",
+    latitude: 22.8310,
+    longitude: 69.7120,
+    tags: { capacity_mw: 4620 }
+  },
+  {
+    name: "Kudankulam Nuclear Complex",
+    facility_type: "power_station",
+    operator: "NPCIL",
+    latitude: 8.1690,
+    longitude: 77.7120,
+    tags: { capacity_mw: 2000 }
+  },
+  {
+    name: "Tuticorin Thermal Power Station",
+    facility_type: "power_station",
+    operator: "TANGEDCO",
+    latitude: 8.7520,
+    longitude: 78.1820,
+    tags: { capacity_mw: 1050 }
   }
 ];
 
@@ -286,13 +677,52 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 function getLandCover(lat: number, lon: number): string {
-  if (lat >= 22.3 && lat <= 22.42 && lon >= 69.8 && lon <= 69.95) return "industrial";
-  if (lat >= 21.05 && lat <= 21.18 && lon >= 72.6 && lon <= 72.75) return "industrial";
-  if (lat >= 29.5 && lat <= 31.5 && lon >= 74.5 && lon <= 76.5) return "cropland";
-  if (lat >= 21.5 && lat <= 22.1 && lon >= 86.0 && lon <= 86.6) return "dense_forest";
-  if (lat >= 22.25 && lat <= 22.45 && lon >= 82.5 && lon <= 82.7) return "mining_pit";
-  if (lat >= 20.75 && lat <= 20.9 && lon >= 85.0 && lon <= 85.2) return "industrial";
-  return "mixed_rural";
+  // 1. Industrial zones / refineries
+  if (lat >= 22.30 && lat <= 22.42 && lon >= 69.80 && lon <= 69.95) return "industrial"; // Jamnagar
+  if (lat >= 21.05 && lat <= 21.18 && lon >= 72.60 && lon <= 72.75) return "industrial"; // Hazira
+  if (lat >= 20.75 && lat <= 20.90 && lon >= 85.00 && lon <= 85.20) return "industrial"; // Angul
+  if (lat >= 27.20 && lat <= 27.40 && lon >= 77.60 && lon <= 77.80) return "industrial"; // Mathura
+  if (lat >= 22.30 && lat <= 22.45 && lon >= 73.05 && lon <= 73.20) return "industrial"; // Vadodara
+  if (lat >= 15.15 && lat <= 15.25 && lon >= 76.60 && lon <= 76.75) return "industrial"; // Toranagallu JSW
+
+  // 2. Mining pits & basins
+  if (lat >= 15.00 && lat <= 15.40 && lon >= 76.30 && lon <= 76.90) return "mining_pit"; // Bellary/Sandur
+  if (lat >= 22.25 && lat <= 22.45 && lon >= 82.50 && lon <= 82.70) return "mining_pit"; // Korba / Gevra
+  if (lat >= 23.65 && lat <= 23.85 && lon >= 86.30 && lon <= 86.55) return "mining_pit"; // Jharia
+  if (lat >= 24.00 && lat <= 24.30 && lon >= 82.50 && lon <= 82.80) return "mining_pit"; // Singrauli
+  if (lat >= 21.80 && lat <= 22.30 && lon >= 85.10 && lon <= 85.60) return "mining_pit"; // Keonjhar/Barbil
+  if (lat >= 11.50 && lat <= 11.70 && lon >= 79.40 && lon <= 79.60) return "mining_pit"; // Neyveli
+
+  // 3. Dense forest reserves & Hill Tracts
+  // Western Ghats forest ridge
+  if (lat >= 8.0 && lat <= 21.0 && lon >= 73.2 && lon <= 77.0 && !(lat >= 14.8 && lat <= 15.5 && lon >= 75.8 && lon <= 77.2)) {
+    if ((lon >= 73.4 && lon <= 75.6) || (lat <= 11.5 && lon >= 76.0 && lon <= 77.3)) return "dense_forest";
+  }
+  // Eastern Ghats
+  if (lat >= 17.0 && lat <= 19.5 && lon >= 81.5 && lon <= 84.5) return "dense_forest";
+  // Simlipal / Mayurbhanj
+  if (lat >= 21.3 && lat <= 22.3 && lon >= 86.0 && lon <= 86.7) return "dense_forest";
+  // Central India / Bastar / Satpura
+  if (lat >= 18.5 && lat <= 23.5 && lon >= 79.5 && lon <= 83.5) {
+    if (lat >= 22.1 && lat <= 22.6 && lon >= 82.2 && lon <= 82.9) return "mining_pit";
+    return "dense_forest";
+  }
+  // Northeast forests
+  if (lat >= 23.5 && lat <= 28.5 && lon >= 90.0 && lon <= 97.2) return "dense_forest";
+  // Himalayan foothills
+  if (lat >= 29.0 && lat <= 33.0 && lon >= 75.0 && lon <= 81.0) return "dense_forest";
+
+  // 4. Cropland / Agricultural belts
+  // Indo-Gangetic Plain (Punjab, Haryana, UP, Bihar, Bengal)
+  if (lat >= 24.5 && lat <= 32.0 && lon >= 74.0 && lon <= 88.5) return "cropland";
+  // Deccan agrarian plateaus (Karnataka, Telangana, Maharashtra)
+  if (lat >= 14.5 && lat <= 19.5 && lon >= 75.0 && lon <= 79.5) return "cropland";
+  // Tamil Nadu plains & Kaveri delta
+  if (lat >= 8.5 && lat <= 12.0 && lon >= 77.2 && lon <= 79.8) return "cropland";
+  // Sri Lanka agrarian plains
+  if (lat >= 7.0 && lat <= 9.5 && lon >= 80.0 && lon <= 81.8) return "cropland";
+
+  return "open_land";
 }
 
 function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
@@ -307,10 +737,11 @@ function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
   }
 
   const landCover = getLandCover(raw.latitude, raw.longitude);
-  const isIndustrialZone = minDist <= 800 || landCover === "industrial";
+  const isIndustrialZone = minDist <= 2500 || landCover === "industrial";
   const isForestZone = landCover === "dense_forest";
   const isFarmlandZone = landCover === "cropland";
-  const isMiningZone = landCover === "mining_pit" || (nearestFac.facility_type === "mine" && minDist <= 1500);
+  const isMiningZone = landCover === "mining_pit" || (nearestFac.facility_type === "mine" && minDist <= 5000);
+  const isInfrastructureNearby = isIndustrialZone || isMiningZone || minDist <= 5000;
 
   const geoContext = {
     nearest_industrial_facility: minDist < 50000 ? nearestFac.name : "None within 50 km",
@@ -334,11 +765,11 @@ function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     cluster_id: raw.cluster_id,
     first_seen: raw.timestamp,
     last_seen: raw.timestamp,
-    observation_count: 1,
-    frequency_per_week: isIndustrialZone ? 4.0 : 1.0,
-    recurrence_ratio: isIndustrialZone ? 0.6 : 0.1,
-    persistence_days: isIndustrialZone ? 25 : 1,
-    seasonal_pattern: "new_detection",
+    observation_count: isIndustrialZone ? 2 : 1,
+    frequency_per_week: isIndustrialZone ? 6.0 : 1.0,
+    recurrence_ratio: isIndustrialZone ? 0.6 : (isForestZone ? 0.3 : 0.1),
+    persistence_days: isIndustrialZone ? 25 : (isForestZone ? 4 : 1),
+    seasonal_pattern: isFarmlandZone ? "seasonal_stubble_burn" : (isIndustrialZone ? "persistent_flaring" : (isForestZone ? "dry_season_wildfire" : "transient")),
     is_persistent: isIndustrialZone
   };
 
@@ -347,19 +778,43 @@ function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     brightness: raw.brightness,
     frp: raw.frp,
     firms_confidence: Math.round((raw.confidence / 100) * 1000) / 1000,
+    scan: 0.40,
+    track: 0.40,
+    daynight_flag: raw.daynight === "N" ? 0.0 : 1.0,
+    distance_to_industry_km: Math.round((minDist / 1000) * 100) / 100,
+    industrial_facility_count: minDist <= 10000 ? 1.0 : 0.0,
+    industrial_nearby_flag: isIndustrialZone ? 1.0 : 0.0,
+    mining_nearby_flag: isMiningZone ? 1.0 : 0.0,
+    infrastructure_nearby_flag: isInfrastructureNearby ? 1.0 : 0.0,
+    forest_context: isForestZone ? 1.0 : 0.0,
+    agricultural_context: isFarmlandZone ? 1.0 : 0.0,
+    urban_context: landCover === "industrial" ? 0.5 : 0.0,
+    open_land_context: (!isForestZone && !isFarmlandZone && !isIndustrialZone && !isMiningZone) ? 1.0 : 0.0,
+    observation_count: tempProfile.observation_count,
+    active_days: tempProfile.persistence_days,
+    active_duration: tempProfile.persistence_days,
+    observation_frequency: tempProfile.frequency_per_week,
+    recurrence_count: Math.round(tempProfile.persistence_days * tempProfile.recurrence_ratio),
+    recurrence_ratio: tempProfile.recurrence_ratio,
+    average_revisit_interval: tempProfile.frequency_per_week > 0 ? Math.round((168 / tempProfile.frequency_per_week) * 10) / 10 : 24.0,
+    median_revisit_interval: 24.0,
+    persistence_score: isIndustrialZone ? 0.85 : (isForestZone ? 0.3 : 0.1),
+    seasonality_score: isFarmlandZone ? 0.85 : (isForestZone ? 0.50 : 0.15),
+    seasonal_concentration: isFarmlandZone ? 0.85 : (isForestZone ? 0.50 : 0.15),
+    // Backwards compatible aliases
     dist_industry_km: Math.round((minDist / 1000) * 100) / 100,
     is_industrial_land: isIndustrialZone ? 1 : 0,
     is_forest_land: isForestZone ? 1 : 0,
     is_farmland: isFarmlandZone ? 1 : 0,
     is_mining_land: isMiningZone ? 1 : 0,
-    persistence_days_log: Math.round(Math.log1p(tempProfile.persistence_days) * 100) / 100,
-    recurrence_ratio: tempProfile.recurrence_ratio,
-    observation_frequency: tempProfile.frequency_per_week
+    persistence_days_log: Math.round(Math.log1p(tempProfile.persistence_days) * 100) / 100
   };
 
-  let topClass = "Other";
+  let topClass = isDemo ? "Other" : "ML_UNAVAILABLE";
   let maxProb = 0.0;
-  let classProbabilities: Record<string, number> = { "Other": 1.0, "Industrial Fire": 0.0, "Gas Flare": 0.0, "Agricultural Burning": 0.0, "Wildfire": 0.0, "Mining": 0.0 };
+  let classProbabilities: Record<string, number> = isDemo
+    ? { "Other": 1.0, "Industrial Fire": 0.0, "Gas Flare": 0.0, "Agricultural Burning": 0.0, "Wildfire": 0.0, "Mining": 0.0 }
+    : {};
   let model_version = "ML_UNAVAILABLE";
 
   if (isDemo) {
@@ -633,6 +1088,8 @@ function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     explanation = `Classified as Wildfire (${pct}% model probability, ${confidenceBand} confidence) due to elevated thermal radiative power situated within a dense forest reserve canopy. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
   } else if (topClass === "Mining") {
     explanation = `Classified as Mining (${pct}% model probability, ${confidenceBand} confidence) owing to co-location within an open-cast mining basin and recurring oxidation signature. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  } else if (topClass === "ML_UNAVAILABLE") {
+    explanation = `Random Forest inference is pending or unavailable for this live observation. Feature extraction completed; awaiting model pipeline execution. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
   } else {
     explanation = `Classified as Other (${pct}% model probability, ${confidenceBand} confidence) because observation attributes do not exhibit definitive industrial, agricultural, or forest wildfire characteristics. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
   }
@@ -753,16 +1210,39 @@ async function startServer() {
   // In-memory data store for live sessions (populated from DB if available)
   let hotspots: any[] = [];
   if (dbInitialized) {
-    hotspots = await loadAllHotspots();
+    try {
+      const dbRecords = await loadAllHotspots();
+      hotspots = dbRecords.map((h: any) => {
+        const isDemo = h.event.id.startsWith("te-scen-");
+        return processThermalEvent(h.event, isDemo);
+      });
+    } catch (e) {
+      console.warn("ThermoGuard: DB load failed, fallback to benchmark seeds:", e);
+    }
   }
-  if (!dbInitialized || hotspots.length === 0) {
-    console.log("ThermoGuard: No DB records found or DB offline. Seeding from RAW_HOTSPOTS.");
-    hotspots = RAW_HOTSPOTS.map((h) => processThermalEvent(h, true));
-    if (dbInitialized) {
-      for (const h of hotspots) {
-        await persistHotspot(h);
+
+  // Ensure all calibrated demo benchmark scenarios are always present
+  for (const raw of RAW_HOTSPOTS) {
+    if (!hotspots.some((h) => h.event.id === raw.id)) {
+      const processed = processThermalEvent(raw, true);
+      hotspots.push(processed);
+      if (dbInitialized) {
+        persistHotspot(processed).catch(() => {});
       }
     }
+  }
+
+  // Run real Random Forest ML classification on all hotspots on startup
+  try {
+    await runMLClassification(hotspots);
+    console.log(`ThermoGuard: Initialized ${hotspots.length} hotspots with Random Forest inference.`);
+    if (dbInitialized) {
+      for (const h of hotspots) {
+        persistHotspot(h).catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    console.warn("ThermoGuard: Initial ML classification warning:", err.message);
   }
 
   let isLiveMode = (
@@ -1340,11 +1820,9 @@ async function startServer() {
         }
       }
 
-      if (ingestionStats.fetch_count === 0 && isLiveMode) {
-        hotspots = [...enrichedEvents];
-      } else {
-        hotspots = [...enrichedEvents, ...hotspots];
-      }
+      const existingIds = new Set(enrichedEvents.map(e => e.event.id));
+      const remainingOld = hotspots.filter(h => !existingIds.has(h.event.id));
+      hotspots = [...enrichedEvents, ...remainingOld];
 
       ingestionStats.total_received += received;
       ingestionStats.total_accepted += accepted;
@@ -1594,11 +2072,18 @@ async function startServer() {
   app.get("/api/statistics", (req, res) => {
     const total = hotspots.length;
     const highRisk = hotspots.filter((h) => ["HIGH", "CRITICAL"].includes(h.classification.risk_score)).length;
-    const persistent = hotspots.filter((h) => h.temporal_profile.is_persistent).length;
-    const industrial = hotspots.filter((h) => ["Industrial Fire", "Gas Flare"].includes(h.classification.predicted_class)).length;
+    const persistent = hotspots.filter((h) => h.temporal_profile.is_persistent || (h.classification.persistence_score && h.classification.persistence_score > 0.5)).length;
+    const industrialFires = hotspots.filter((h) => h.classification.predicted_class === "Industrial Fire").length;
+    const gasFlares = hotspots.filter((h) => h.classification.predicted_class === "Gas Flare").length;
+    const industrial = industrialFires + gasFlares;
     const wildfires = hotspots.filter((h) => h.classification.predicted_class === "Wildfire").length;
     const agri = hotspots.filter((h) => h.classification.predicted_class === "Agricultural Burning").length;
-    const activeAlerts = hotspots.filter((h) => h.alert !== null).length;
+    const mining = hotspots.filter((h) => h.classification.predicted_class === "Mining").length;
+    const other = hotspots.filter((h) => h.classification.predicted_class === "Other").length;
+    const mlUnavailable = hotspots.filter((h) => h.classification.predicted_class === "ML_UNAVAILABLE").length;
+    const activeAlerts = hotspots.filter((h) => h.alert !== null || ["HIGH", "CRITICAL"].includes(h.classification.risk_score)).length;
+    const liveCount = hotspots.filter((h) => h.event.source === "NASA_FIRMS_LIVE").length;
+    const demoCount = hotspots.filter((h) => h.event.source !== "NASA_FIRMS_LIVE").length;
 
     res.json({
       total_hotspots: total,
@@ -1608,7 +2093,24 @@ async function startServer() {
       wildfires,
       agricultural_burns: agri,
       active_alerts: activeAlerts,
-      data_provider_mode: "DEMO_CALIBRATED_PROVIDER",
+      by_class: {
+        "Industrial Fire": industrialFires,
+        "Gas Flare": gasFlares,
+        "Agricultural Burning": agri,
+        "Wildfire": wildfires,
+        "Mining": mining,
+        "Other": other,
+        "ML_UNAVAILABLE": mlUnavailable
+      },
+      by_risk: {
+        "CRITICAL": hotspots.filter(h => h.classification.risk_score === "CRITICAL").length,
+        "HIGH": hotspots.filter(h => h.classification.risk_score === "HIGH").length,
+        "MEDIUM": hotspots.filter(h => h.classification.risk_score === "MEDIUM").length,
+        "LOW": hotspots.filter(h => h.classification.risk_score === "LOW").length
+      },
+      live_count: liveCount,
+      demo_count: demoCount,
+      data_provider_mode: isLiveMode ? "LIVE_SATELLITE_API" : "DEMO_CALIBRATED_PROVIDER",
       last_updated: new Date().toISOString()
     });
   });
@@ -1621,7 +2123,15 @@ async function startServer() {
 
   app.get("/api/alerts", (req, res) => {
     const { severity, status } = req.query;
-    let alerts = hotspots.map((h) => h.alert).filter(Boolean);
+    const rawAlerts = hotspots.map((h) => h.alert).filter(Boolean);
+    const seen = new Set<string>();
+    let alerts: any[] = [];
+    for (const a of rawAlerts) {
+      if (a && a.id && !seen.has(a.id)) {
+        seen.add(a.id);
+        alerts.push(a);
+      }
+    }
     if (severity && severity !== "All" && severity !== "ALL") {
       alerts = alerts.filter(a => a.severity.toUpperCase() === String(severity).toUpperCase());
     }
@@ -1864,7 +2374,7 @@ async function startServer() {
         },
         classifier: {
           model_name: "Random Forest Decision Tree Ensemble",
-          model_version: model_version,
+          model_version: "random_forest_v1.0.0",
           features_extracted: 14,
           inference_engine: "Synchronous Tabular Extractor",
           classes_supported: ["Industrial Fire", "Gas Flare", "Agricultural Burning", "Wildfire", "Mining", "Other"]
@@ -2057,7 +2567,7 @@ async function startServer() {
     }
     // Fallback default metadata
     res.json({
-      model_version: model_version,
+      model_version: "random_forest_v1.0.0",
       algorithm: "RandomForestClassifier",
       framework: "scikit-learn",
       target_classes: ["Industrial Fire", "Gas Flare", "Agricultural Burning", "Wildfire", "Mining", "Other"],
@@ -2136,7 +2646,7 @@ async function startServer() {
       predicted_class: predictedClass,
       confidence: conf,
       class_probabilities: probs,
-      model_version: model_version
+      model_version: "random_forest_v1.0.0"
     });
   });
 
@@ -2267,6 +2777,7 @@ async function startServer() {
   // Reset to Demo Baseline
   app.post("/api/scenarios/reset-demo", async (req, res) => {
     hotspots = RAW_HOTSPOTS.map((h) => processThermalEvent(h, true));
+    await runMLClassification(hotspots);
     res.json({
       status: "SUCCESS",
       total_loaded: hotspots.length,

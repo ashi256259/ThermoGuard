@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Radio,
   Compass,
@@ -13,11 +13,24 @@ import {
   Satellite,
   LogOut,
   UserCheck,
-  ShieldAlert
+  ShieldAlert,
+  Search,
+  ChevronDown,
+  Settings,
+  Menu,
+  Flame,
+  X,
+  User,
+  Shield,
+  ExternalLink,
+  CheckCircle2
 } from "lucide-react";
 import { useHealthStatus } from "../hooks/useHealthStatus";
 import { useAuth } from "../context/AuthContext";
 import { APP_CONFIG } from "../config/constants";
+import { apiService, HotspotItem } from "../services/api";
+import { ScenarioDrawer } from "../components/ScenarioDrawer";
+import { DemoScenario, AlertItem } from "../types";
 
 export type NavPage =
   | "dashboard"
@@ -26,23 +39,179 @@ export type NavPage =
   | "timeline"
   | "alerts"
   | "analytics"
-  | "admin";
+  | "admin"
+  | "settings";
 
 interface MainLayoutProps {
   currentPage: NavPage;
   onSelectPage: (page: NavPage) => void;
   children: React.ReactNode;
+  onSelectHotspot?: (hotspot: HotspotItem) => void;
+  isLiveMode?: boolean;
+  activeScenario?: DemoScenario | null;
+  onSelectScenario?: (scenario: DemoScenario) => void;
+  onResetToLive?: () => void;
+  hotspots?: HotspotItem[];
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({
   currentPage,
   onSelectPage,
-  children
+  children,
+  onSelectHotspot,
+  isLiveMode = true,
+  activeScenario = null,
+  onSelectScenario,
+  onResetToLive,
+  hotspots: externalHotspots
 }) => {
   const { user, logout, canAccessAdminDashboard, isAdmin } = useAuth();
   const { connectionState, healthData, errorMessage, refresh } = useHealthStatus();
   const [utcTime, setUtcTime] = useState<string>("");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
+
+  // Top header state
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [hasExecutedSearch, setHasExecutedSearch] = useState<boolean>(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const [isScenarioDrawerOpen, setIsScenarioDrawerOpen] = useState<boolean>(false);
+  const [internalHotspots, setInternalHotspots] = useState<HotspotItem[]>([]);
+  const [activeAlertsCount, setActiveAlertsCount] = useState<number>(0);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Load hotspots if not passed from parent
+  useEffect(() => {
+    if (!externalHotspots || externalHotspots.length === 0) {
+      apiService.getHotspots()
+        .then((data) => setInternalHotspots(data))
+        .catch(() => {});
+    }
+  }, [externalHotspots]);
+
+  // Load active alerts count
+  useEffect(() => {
+    apiService.getAlerts()
+      .then((alerts: AlertItem[]) => {
+        const active = alerts.filter((a) => a.status === "ACTIVE");
+        setActiveAlertsCount(active.length);
+      })
+      .catch(() => {});
+  }, [currentPage]);
+
+  const activeHotspots = externalHotspots && externalHotspots.length > 0 ? externalHotspots : internalHotspots;
+
+  // Global keyboard shortcuts: "/" to focus search, "Escape" to clear/close
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement !== searchInputRef.current) {
+        const tagName = (document.activeElement as HTMLElement)?.tagName;
+        if (tagName !== "INPUT" && tagName !== "TEXTAREA" && !(document.activeElement as HTMLElement)?.isContentEditable) {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+          setIsSearchOpen(true);
+        }
+      } else if (e.key === "Escape") {
+        setIsSearchOpen(false);
+        setIsUserMenuOpen(false);
+        setIsScenarioDrawerOpen(false);
+        searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  // Outside click listener for search and user menu
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        searchDropdownRef.current &&
+        !searchDropdownRef.current.contains(e.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(e.target as Node)
+      ) {
+        setIsSearchOpen(false);
+      }
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(e.target as Node)
+      ) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Search filtering logic
+  const filteredSearchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return activeHotspots.filter((h) => {
+      const idMatch = h.event.id.toLowerCase().includes(q);
+      const classMatch = h.classification.predicted_class.toLowerCase().includes(q);
+      const facilityMatch = h.geo_context.nearest_industrial_facility?.toLowerCase().includes(q);
+      const landMatch = h.geo_context.land_cover?.toLowerCase().replace(/_/g, " ").includes(q);
+      const latStr = String(h.event.latitude);
+      const lonStr = String(h.event.longitude);
+      const coordMatch = latStr.includes(q) || lonStr.includes(q);
+      const satelliteMatch = h.event.satellite?.toLowerCase().includes(q);
+      return idMatch || classMatch || facilityMatch || landMatch || coordMatch || satelliteMatch;
+    });
+  }, [activeHotspots, searchQuery]);
+
+  // Handle Enter in search input
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setHasExecutedSearch(true);
+      setIsSearchOpen(true);
+      if (filteredSearchResults.length > 0) {
+        handleSelectSearchResult(filteredSearchResults[0]);
+      }
+    } else if (e.key === "Escape") {
+      setIsSearchOpen(false);
+      searchInputRef.current?.blur();
+    }
+  };
+
+  // Select a search result
+  const handleSelectSearchResult = (hotspot: HotspotItem) => {
+    setIsSearchOpen(false);
+    if (onSelectHotspot) {
+      onSelectHotspot(hotspot);
+    }
+    if (currentPage !== "dashboard") {
+      onSelectPage("dashboard");
+    }
+  };
+
+  // Handle NASA FIRMS (Live) click
+  const handleLiveModeClick = () => {
+    if (onResetToLive) {
+      onResetToLive();
+    }
+    refresh();
+    if (currentPage !== "dashboard") {
+      onSelectPage("dashboard");
+    }
+  };
+
+  // Handle Demo Scenario selection
+  const handleScenarioSelected = (scenario: DemoScenario) => {
+    if (onSelectScenario) {
+      onSelectScenario(scenario);
+    }
+    setIsScenarioDrawerOpen(false);
+    if (currentPage !== "dashboard") {
+      onSelectPage("dashboard");
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -54,319 +223,497 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const navItems: Array<{ id: NavPage; label: string; icon: React.ReactNode; adminOnly?: boolean }> = [
+  const operationalNavItems: Array<{ id: NavPage; label: string; icon: React.ReactNode }> = [
     {
       id: "dashboard",
-      label: "Surveillance Map",
-      icon: <Radio className="w-4 h-4" />
+      label: "Dashboard",
+      icon: <Radio className="w-[18px] h-[18px]" />
     },
     {
       id: "explorer",
       label: "Hotspot Catalog",
-      icon: <Compass className="w-4 h-4" />
+      icon: <Compass className="w-[18px] h-[18px]" />
     },
     {
       id: "details",
-      label: "Source Telemetry",
-      icon: <FileSearch className="w-4 h-4" />
+      label: "Source Analysis",
+      icon: <FileSearch className="w-[18px] h-[18px]" />
     },
     {
       id: "timeline",
-      label: "Temporal Analysis",
-      icon: <History className="w-4 h-4" />
+      label: "Temporal Trends",
+      icon: <History className="w-[18px] h-[18px]" />
     },
     {
       id: "alerts",
       label: "Incident Alerts",
-      icon: <BellRing className="w-4 h-4" />
+      icon: <BellRing className="w-[18px] h-[18px]" />
     },
     {
       id: "analytics",
       label: "Analytics & ML",
-      icon: <BarChart3 className="w-4 h-4" />
+      icon: <BarChart3 className="w-[18px] h-[18px]" />
+    }
+  ];
+
+  const adminNavItems: Array<{ id: NavPage; label: string; icon: React.ReactNode; adminOnly?: boolean }> = [
+    {
+      id: "settings",
+      label: "Settings",
+      icon: <Settings className="w-[18px] h-[18px]" />
     },
     ...(canAccessAdminDashboard || isAdmin
       ? [
           {
             id: "admin" as NavPage,
             label: "Admin Command",
-            icon: <ShieldAlert className="w-4 h-4" />,
+            icon: <ShieldAlert className="w-[18px] h-[18px]" />,
             adminOnly: true
           }
         ]
       : [])
   ];
 
-  const getPageTitle = (page: NavPage): string => {
-    switch (page) {
-      case "dashboard":
-        return "Thermal Source Intelligence";
-      case "explorer":
-        return "Hotspot Observation Catalog";
-      case "details":
-        return "Source Telemetry & Forensic Audit";
-      case "timeline":
-        return "Temporal Persistence & Revisit Analysis";
-      case "alerts":
-        return "Incident Alert Center";
-      case "analytics":
-        return "Geospatial & Machine Learning Analytics";
-      case "admin":
-        return "Command Authority & Administration Console";
-      default:
-        return "Thermal Source Intelligence";
-    }
-  };
+  const userName = user?.name || "Dr. Vikram Sethi";
+  const userRole = user?.role === "CHIEF_SURVEILLANCE_OFFICER" ? "Officer" : user?.role === "ADMIN" ? "Admin" : user?.role === "SENIOR_GIS_ANALYST" ? "Analyst" : "Officer";
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#070b14] text-slate-100 font-sans select-none antialiased">
-      {/* 1. OPERATIONS SIDEBAR */}
-      <aside className="w-60 flex-shrink-0 flex flex-col border-r border-[#152033] bg-[#090e1a] z-30">
-        {/* Brand Header */}
-        <div className="px-3.5 py-3 border-b border-[#141d2e]">
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-7 h-7 rounded bg-[#0f172a] border border-[#1e293b] text-cyan-400">
-              <Satellite className="w-3.5 h-3.5" />
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800 font-sans antialiased">
+      {/* 1. SIDEBAR */}
+      <aside className="w-64 flex-shrink-0 flex flex-col border-r border-slate-200 bg-white z-30 justify-between">
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {/* Brand Header */}
+          <div className="px-5 py-5 flex items-center gap-3 border-b border-slate-100">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white shadow-sm flex-shrink-0">
+              <Flame className="w-5 h-5 fill-current" />
             </div>
+            <div className="min-w-0">
+              <div className="font-bold text-slate-900 text-sm tracking-tight leading-none">ThermoGuard AI</div>
+              <p className="text-[10px] text-slate-500 font-medium mt-1 leading-none">Detect • Classify • Protect</p>
+            </div>
+          </div>
+
+          {/* Navigation List */}
+          <div className="px-3 py-4 space-y-6">
+            {/* OPERATIONAL VIEWS */}
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-semibold tracking-tight text-white text-xs">ThermoGuard AI</span>
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
+                OPERATIONAL VIEWS
               </div>
-              <p className="text-[10px] text-slate-400 leading-tight">
-                Detect • Classify • Protect
-              </p>
+              <nav className="flex flex-col gap-0.5">
+                {operationalNavItems.map((item) => {
+                  const isActive = currentPage === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onSelectPage(item.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
+                        isActive
+                          ? "bg-blue-50 text-blue-700 font-semibold"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className={isActive ? "text-blue-600" : "text-slate-400"}>
+                        {item.icon}
+                      </div>
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* ADMINISTRATION */}
+            <div>
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
+                ADMINISTRATION
+              </div>
+              <nav className="flex flex-col gap-0.5">
+                {adminNavItems.map((item) => {
+                  const isActive = currentPage === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onSelectPage(item.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
+                        isActive
+                          ? "bg-blue-50 text-blue-700 font-semibold"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className={isActive ? "text-blue-600" : "text-slate-400"}>
+                        {item.icon}
+                      </div>
+                      <span>{item.label}</span>
+                      {item.adminOnly && (
+                        <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          Admin
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          </div>
+        </div>
+
+        {/* User Profile & Footer */}
+        <div className="p-4 border-t border-slate-100 mt-auto bg-white">
+          <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-slate-50 border border-slate-200/60 mb-2">
+            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm flex-shrink-0 border border-blue-200">
+              {userName.charAt(0)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-slate-900 truncate">
+                {userName}
+              </div>
+              <div className="text-xs text-slate-500 truncate font-medium">
+                {userRole}
+              </div>
             </div>
           </div>
 
-          {/* Project & Operational Identity */}
-          <div className="mt-2.5 pt-2 border-t border-[#141d2e] flex items-center justify-between text-[10px] text-slate-400">
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer"
+          >
+            <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-600" />
+            <span>Sign Out</span>
+          </button>
+
+          <div className="px-2 mt-3 flex items-center justify-between text-[10px] text-slate-400 font-medium">
             <span>SIH26162 • NTRO</span>
-            <span className="font-mono text-slate-300">v0.1</span>
-          </div>
-        </div>
-
-        {/* Operational Navigation List */}
-        <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
-          <div className="px-2 pb-1.5 text-[9px] tracking-wider text-slate-500 uppercase font-medium">
-            Operational Views
-          </div>
-
-          {navItems.map((item) => {
-            const isActive = currentPage === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`nav-btn-${item.id}`}
-                onClick={() => onSelectPage(item.id)}
-                className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer ${
-                  isActive
-                    ? "bg-[#111c30] text-cyan-300 font-medium border-l-2 border-cyan-400"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-[#0c1322] border-l-2 border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className={isActive ? "text-cyan-400" : "text-slate-500"}>
-                    {item.icon}
-                  </span>
-                  <span className="truncate">{item.label}</span>
-                </div>
-                {item.adminOnly && (
-                  <span className="px-1.5 py-0.2 rounded font-mono text-[8px] bg-rose-500/10 text-rose-300 border border-rose-500/30">
-                    L4
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Active Officer Identity Card */}
-        {user && (
-          <div className="mx-2 mb-2 p-2.5 rounded-lg bg-[#0c1424] border border-[#182640] text-xs">
-            <div className="flex items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <div className="w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold text-[10px] flex-shrink-0">
-                  {user.name.charAt(0)}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold text-white truncate leading-tight">
-                    {user.name}
-                  </div>
-                  <div className="text-[9px] text-cyan-400 font-mono truncate leading-tight">
-                    {user.badge_number || "NTRO-AUTH"}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                title="Sign Out Session"
-                className="p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer flex-shrink-0"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="mt-2 pt-1.5 border-t border-[#141f33] flex items-center justify-between text-[9px]">
-              <span className="text-slate-400 truncate max-w-[100px]">{user.role.replace(/_/g, " ")}</span>
-              <span className={`px-1.5 py-0.2 rounded font-mono text-[8px] border ${
-                user.clearance_level === "LEVEL_4_RESTRICTED"
-                  ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
-                  : user.clearance_level === "LEVEL_3_CONFIDENTIAL"
-                  ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
-                  : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-              }`}>
-                {user.clearance_level === "LEVEL_4_RESTRICTED"
-                  ? "L4 COMMAND"
-                  : user.clearance_level === "LEVEL_3_CONFIDENTIAL"
-                  ? "L3 CONFIDENTIAL"
-                  : "L2 ANALYST"}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Provider Engine Status - Compact */}
-        <div className="px-3 py-2 mx-2 mb-2 rounded bg-[#0a101d] border border-[#141e30] text-[10px] space-y-1">
-          <div className="flex items-center justify-between text-slate-300 font-medium">
-            <span>Data Engine</span>
-            <span className={healthData?.data_provider_mode === "LIVE_SATELLITE_API" ? "text-emerald-400 font-mono" : "text-teal-400 font-mono"}>
-              {healthData?.data_provider_mode === "LIVE_SATELLITE_API" ? "NASA Live" : "Demo Mode"}
-            </span>
-          </div>
-          <div className="space-y-0.5 text-slate-400 font-mono text-[9px]">
-            <div className="flex justify-between">
-              <span>FIRMS:</span>
-              <span className={healthData?.data_provider_mode === "LIVE_SATELLITE_API" ? "text-emerald-300" : "text-slate-300"}>
-                {healthData?.data_provider_mode === "LIVE_SATELLITE_API" ? "VIIRS NRT Live" : "Calibrated Feed"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Cadastre:</span>
-              <span className="text-slate-300">OpenStreetMap</span>
-            </div>
-          </div>
-        </div>
-
-        {/* System Health Status */}
-        <div className="px-3 py-2 border-t border-[#141d2e] bg-[#070b14] text-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              {connectionState === "connected" && (
-                <div className="flex items-center gap-1.5 text-slate-300 text-[10px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
-                  <span>Backend Nominal</span>
-                </div>
-              )}
-              {connectionState === "loading" && (
-                <div className="flex items-center gap-1.5 text-amber-400 text-[10px]">
-                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                  <span>Connecting...</span>
-                </div>
-              )}
-              {connectionState === "error" && (
-                <div className="flex items-center gap-1.5 text-rose-400 text-[10px]">
-                  <WifiOff className="w-2.5 h-2.5" />
-                  <span>Offline</span>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => refresh()}
-              title="Refresh Health Status"
-              className="p-1 rounded hover:bg-[#121c33] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-2.5 h-2.5" />
-            </button>
+            <span className="font-mono">v2.4</span>
           </div>
         </div>
       </aside>
 
       {/* 2. MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header */}
-        <header className="h-12 border-b border-[#152033] bg-[#090e1a] px-5 flex items-center justify-between flex-shrink-0 z-20">
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold text-white tracking-tight">
-              {getPageTitle(currentPage)}
-            </h1>
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-50 relative">
+        {/* TOP HEADER */}
+        <header className="h-16 flex-shrink-0 bg-white border-b border-slate-200 px-6 flex items-center justify-between z-20 gap-4">
+          
+          <div className="flex items-center gap-3 flex-shrink-0 lg:w-48">
+            <div className="hidden sm:block">
+              <div className="font-bold text-slate-900 text-sm tracking-tight leading-none">ThermoGuard AI</div>
+              <p className="text-[10px] text-slate-500 font-medium mt-1 leading-none">Detect • Classify • Protect</p>
+            </div>
           </div>
 
-          {/* Secondary Telemetry Information */}
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            {/* Classifier model info */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0e1628] border border-[#17233c] text-[11px]">
-              <span className="text-slate-400">Classifier:</span>
-              <span className="text-slate-200 font-medium">Random Forest</span>
-            </div>
+          {/* Search */}
+          <div className="flex-1 flex items-center max-w-md relative">
+             <div className="relative w-full">
+               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                 <Search className="h-4 w-4 text-slate-400" />
+               </div>
+               <input 
+                 ref={searchInputRef}
+                 type="text" 
+                 value={searchQuery}
+                 onChange={(e) => {
+                   setSearchQuery(e.target.value);
+                   setIsSearchOpen(true);
+                   setHasExecutedSearch(false);
+                 }}
+                 onFocus={() => {
+                   if (searchQuery.trim().length > 0) {
+                     setIsSearchOpen(true);
+                   }
+                 }}
+                 onKeyDown={handleSearchKeyDown}
+                 placeholder="Search location, event ID, or classification..." 
+                 className="block w-full pl-9 pr-8 py-1.5 border border-slate-200 rounded-lg bg-slate-50 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:border-blue-500 transition-colors"
+               />
+               <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setIsSearchOpen(false);
+                        setHasExecutedSearch(false);
+                      }}
+                      className="p-0.5 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 bg-white px-1.5 py-0.2 rounded border border-slate-200 font-mono shadow-2xs">
+                      /
+                    </span>
+                  )}
+               </div>
+             </div>
 
-            {/* Data Source status */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0e1628] border border-[#17233c] text-[11px] text-slate-300">
-              <span className={`w-1.5 h-1.5 rounded-full ${healthData?.data_provider_mode === "LIVE_SATELLITE_API" ? "bg-emerald-400 animate-pulse" : "bg-teal-400"}`} />
-              <span>{healthData?.data_provider_mode === "LIVE_SATELLITE_API" ? "NASA Live VIIRS" : "Demo Data"}</span>
-            </div>
+             {/* Search Results Dropdown */}
+             {isSearchOpen && searchQuery.trim().length > 0 && (
+               <div 
+                 ref={searchDropdownRef}
+                 className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-slate-200 shadow-xl p-2 z-50 max-h-80 overflow-y-auto divide-y divide-slate-100 animate-fade-in"
+               >
+                 {filteredSearchResults.length === 0 ? (
+                   <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                     No matching thermal events found.
+                   </div>
+                 ) : (
+                   <div>
+                     <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                       <span>Matching Thermal Events</span>
+                       <span>{filteredSearchResults.length} found</span>
+                     </div>
+                     <div className="space-y-0.5">
+                       {filteredSearchResults.slice(0, 8).map((h, idx) => (
+                         <button
+                           key={h.event.id ? `${h.event.id}-${idx}` : `search-res-${idx}`}
+                           onClick={() => handleSelectSearchResult(h)}
+                           className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 flex items-center justify-between gap-3 transition-colors cursor-pointer group"
+                         >
+                           <div className="min-w-0 flex-1">
+                             <div className="flex items-center gap-2">
+                               <span className="font-mono text-xs font-bold text-blue-600 group-hover:underline">
+                                 {h.event.id}
+                               </span>
+                               <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                                 h.classification.risk_score === "CRITICAL"
+                                   ? "bg-red-50 text-red-700 border-red-200"
+                                   : h.classification.risk_score === "HIGH"
+                                   ? "bg-orange-50 text-orange-700 border-orange-200"
+                                   : h.classification.risk_score === "MEDIUM"
+                                   ? "bg-amber-50 text-amber-700 border-amber-200"
+                                   : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                               }`}>
+                                 {h.classification.risk_score}
+                               </span>
+                               <span className="text-xs font-semibold text-slate-900 truncate">
+                                 {h.classification.predicted_class}
+                               </span>
+                             </div>
+                             <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                               {h.geo_context.nearest_industrial_facility} ({Math.round(h.geo_context.distance_to_industry)}m) • FRP: {h.event.frp.toFixed(1)} MW
+                             </div>
+                           </div>
+                           <div className="text-right text-[11px] text-slate-400 font-mono flex-shrink-0">
+                             {h.event.latitude.toFixed(3)}, {h.event.longitude.toFixed(3)}
+                           </div>
+                         </button>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+               </div>
+             )}
+          </div>
 
-            {/* UTC Clock */}
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0e1628] border border-[#17233c] text-slate-400 font-mono text-[11px]">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>{utcTime || "UTC"}</span>
-            </div>
-
-            {/* Officer Quick Logout in Header */}
-            {user && (
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0e1628] hover:bg-rose-500/10 border border-[#17233c] hover:border-rose-500/30 text-slate-300 hover:text-rose-300 text-[11px] transition-colors cursor-pointer"
+          <div className="flex items-center gap-3 flex-shrink-0">
+            
+            {/* Mode Selector */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              <button 
+                onClick={handleLiveModeClick}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  isLiveMode
+                    ? "bg-white text-blue-600 shadow-sm border border-slate-200/50"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="Active satellite telemetry from NASA FIRMS VIIRS/MODIS"
               >
-                <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                <span className="hidden md:inline">Sign Out</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${isLiveMode ? "bg-blue-500" : "bg-slate-400"}`}></div>
+                NASA FIRMS (Live)
               </button>
+              <button 
+                onClick={() => setIsScenarioDrawerOpen(true)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                  !isLiveMode
+                    ? "bg-white text-blue-600 font-semibold shadow-sm border border-slate-200/50"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="Select Smart India Hackathon 2026 validation scenario"
+              >
+                {!isLiveMode && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>}
+                Demo Scenario
+              </button>
+            </div>
+
+            {/* Status Indicator (reflects real state: Demo vs Live connection) */}
+            {!isLiveMode ? (
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold cursor-pointer"
+                onClick={() => setIsScenarioDrawerOpen(true)}
+                title={`Active Demo Scenario: ${activeScenario?.title || "Custom Scenario"}. Click to change scenario.`}
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                Demo
+              </div>
+            ) : connectionState === "connected" && healthData?.status === "ok" ? (
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold cursor-pointer hover:bg-emerald-100/70 transition"
+                onClick={refresh}
+                title={`NASA FIRMS Mode: ${healthData?.providers?.firms || "Operational"} • System Nominal. Click to refresh.`}
+              >
+                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                 Live
+              </div>
+            ) : connectionState === "loading" ? (
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold"
+                title="Verifying FIRMS provider status..."
+              >
+                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                 Connecting...
+              </div>
+            ) : (
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold cursor-pointer hover:bg-amber-100/70 transition"
+                onClick={refresh}
+                title={errorMessage || "Backend or FIRMS stream offline. Click to retry."}
+              >
+                 <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                 Offline
+              </div>
             )}
+
+            {/* Region Indicator */}
+            <div 
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg select-none"
+              title="Monitored Area: India (NASA FIRMS South Asia Sector)"
+            >
+              <Compass className="w-3.5 h-3.5 text-blue-600" />
+              <span>India</span>
+            </div>
+
+            <div className="h-5 w-px bg-slate-200 hidden sm:block"></div>
+
+            {/* Refresh Surveillance / Telemetry Button */}
+            <button
+              onClick={() => {
+                refresh();
+                if (onResetToLive) {
+                  onResetToLive();
+                }
+              }}
+              className="p-2 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Refresh NASA FIRMS telemetry and system health"
+            >
+              <RefreshCw className={`w-4 h-4 ${connectionState === "loading" ? "animate-spin text-blue-600" : ""}`} />
+            </button>
+
+            <button 
+              onClick={() => onSelectPage("alerts")}
+              className="relative p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              title={activeAlertsCount > 0 ? `${activeAlertsCount} Active Incident Alerts` : "Incident Alerts"}
+            >
+              <BellRing className="w-4 h-4" />
+              {activeAlertsCount > 0 && (
+                <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>
+              )}
+            </button>
+            
+            {/* User Avatar & Dropdown */}
+            <div className="relative" ref={userMenuRef}>
+              <button 
+                onClick={() => setIsUserMenuOpen((prev) => !prev)}
+                className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-700 font-bold text-xs border border-blue-200 hover:ring-2 hover:ring-blue-400/30 transition-all cursor-pointer"
+                title={`User: ${userName} (${userRole})`}
+              >
+                {userName.charAt(0)}
+              </button>
+
+              {isUserMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl p-3 z-50 animate-fade-in text-slate-800">
+                  <div className="px-3 py-2.5 bg-slate-50 rounded-lg border border-slate-200/60 mb-2">
+                    <div className="text-xs font-bold text-slate-900 truncate">{userName}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{user?.email || "v.sethi@ntro.gov.in"}</div>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                        {userRole}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">Level 3 Clearance</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <button
+                      onClick={() => {
+                        onSelectPage("settings");
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <Settings className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Account & Preferences</span>
+                    </button>
+
+                    {(canAccessAdminDashboard || isAdmin) && (
+                      <button
+                        onClick={() => {
+                          onSelectPage("admin");
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        <ShieldAlert className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Admin Command Center</span>
+                      </button>
+                    )}
+
+                    <div className="my-1 border-t border-slate-100" />
+
+                    <button
+                      onClick={() => {
+                        setShowLogoutConfirm(true);
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         </header>
 
-        {/* Page Content Surface */}
-        <main className="flex-1 overflow-hidden relative bg-[#070b14]">
-          {children}
+        {/* PAGE CONTENT */}
+        <main className="flex-1 overflow-hidden relative">
+          <div className="absolute inset-0 overflow-y-auto overflow-x-hidden p-6 pb-20">
+             {children}
+          </div>
         </main>
       </div>
 
-      {/* Logout Confirmation Dialog */}
+      {/* Scenario Drawer for demonstration */}
+      <ScenarioDrawer
+        isOpen={isScenarioDrawerOpen}
+        onClose={() => setIsScenarioDrawerOpen(false)}
+        onSelectScenario={handleScenarioSelected}
+        activeScenarioId={activeScenario?.id}
+      />
+
+      {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-xl bg-[#0a101d] border border-[#1e2a42] p-5 shadow-2xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
-                <LogOut className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-white">Sign Out of Session</h3>
-                <p className="text-xs text-slate-400">NTRO Geospatial Intelligence Wing</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to end your active surveillance session? Your access token will be invalidated.
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6 transform transition-all">
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Sign Out</h3>
+            <p className="text-slate-500 text-sm mb-6">
+              Are you sure you want to end your current operational session?
             </p>
-
-            <div className="mt-4 pt-3 border-t border-[#162238] flex items-center justify-end gap-2">
+            <div className="flex justify-end gap-3">
               <button
-                type="button"
                 onClick={() => setShowLogoutConfirm(false)}
-                className="px-3 py-1.5 rounded-lg bg-[#0f172a] hover:bg-[#152038] border border-[#1e293b] text-xs text-slate-300 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  logout();
-                }}
-                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs text-white font-medium shadow-md shadow-rose-950/40 transition-colors cursor-pointer"
+                onClick={logout}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors"
               >
-                Confirm Sign Out
+                Sign Out
               </button>
             </div>
           </div>

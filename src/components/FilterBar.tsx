@@ -53,16 +53,16 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   totalCount,
 }) => {
   return (
-    <div className="bg-[#07090d] border-b border-slate-800 px-4 lg:px-6 py-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+    <div className="bg-white border-b border-slate-200/80 px-4 lg:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs">
       <div className="flex flex-wrap items-center gap-3">
         {/* Region Quick Selector */}
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <MapPin className="w-3.5 h-3.5 text-orange-500" />
-          <span className="text-slate-400 font-medium">Region:</span>
+        <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+          <MapPin className="w-3.5 h-3.5 text-blue-600" />
+          <span className="text-slate-500 text-xs">Region:</span>
           <select
             value={selectedRegion}
             onChange={(e) => onSelectRegion(e.target.value)}
-            className="bg-[#050608] border border-slate-800 hover:border-slate-700 text-slate-200 px-2.5 py-1 rounded focus:outline-none focus:border-orange-500 font-mono text-xs transition"
+            className="bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-900 px-3 py-1.5 rounded-xl focus:outline-none focus:bg-white focus:border-blue-500 font-semibold text-xs transition cursor-pointer"
           >
             {REGION_OPTIONS.map((r) => (
               <option key={r.id} value={r.id}>
@@ -72,15 +72,15 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           </select>
         </div>
 
-        <div className="hidden md:block w-px h-4 bg-slate-800" />
+        <div className="hidden md:block w-px h-5 bg-slate-200" />
 
         {/* Source Class Filter */}
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <span className="text-slate-400 font-medium">Class:</span>
+        <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+          <span className="text-slate-500 text-xs">Class:</span>
           <select
             value={selectedClass}
             onChange={(e) => onSelectClass(e.target.value)}
-            className="bg-[#050608] border border-slate-800 hover:border-slate-700 text-slate-200 px-2.5 py-1 rounded focus:outline-none focus:border-orange-500 font-mono text-xs transition"
+            className="bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-900 px-3 py-1.5 rounded-xl focus:outline-none focus:bg-white focus:border-blue-500 font-semibold text-xs transition cursor-pointer"
           >
             {CLASS_OPTIONS.map((c) => (
               <option key={c} value={c}>
@@ -91,12 +91,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         {/* Risk Level Filter */}
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <span className="text-slate-400 font-medium">Risk:</span>
+        <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+          <span className="text-slate-500 text-xs">Risk:</span>
           <select
             value={selectedRisk}
             onChange={(e) => onSelectRisk(e.target.value)}
-            className="bg-[#050608] border border-slate-800 hover:border-slate-700 text-slate-200 px-2.5 py-1 rounded focus:outline-none focus:border-orange-500 font-mono text-xs transition"
+            className="bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-900 px-3 py-1.5 rounded-xl focus:outline-none focus:bg-white focus:border-blue-500 font-semibold text-xs transition cursor-pointer"
           >
             {RISK_OPTIONS.map((r) => (
               <option key={r} value={r}>
@@ -109,18 +109,18 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         {/* Persistent Only Toggle */}
         <button
           onClick={onTogglePersistentOnly}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded border transition font-mono ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition text-xs font-semibold cursor-pointer ${
             isPersistentOnly
-              ? "bg-cyan-950/40 text-cyan-300 border-cyan-500/60 font-semibold shadow-sm"
-              : "bg-[#050608] text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border-blue-200 shadow-2xs"
+              : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-100"
           }`}
         >
           <span>Persistent Only</span>
         </button>
 
         {/* Confidence Slider */}
-        <div className="hidden lg:flex items-center gap-2 text-slate-400">
-          <Sliders className="w-3.5 h-3.5 text-slate-500" />
+        <div className="hidden lg:flex items-center gap-2 text-slate-600 text-xs font-medium">
+          <Sliders className="w-3.5 h-3.5 text-slate-400" />
           <span>Min Conf:</span>
           <input
             type="range"
@@ -128,24 +128,24 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             max="100"
             value={minConfidence}
             onChange={(e) => onChangeMinConfidence(Number(e.target.value))}
-            className="w-20 accent-orange-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+            className="w-20 accent-blue-600 cursor-pointer h-1.5 bg-slate-200 rounded-lg"
           />
-          <span className="font-mono text-orange-400 w-8">{minConfidence}%</span>
+          <span className="font-mono font-bold text-blue-700 w-8">{minConfidence}%</span>
         </div>
       </div>
 
       {/* Result Count and Reset Button */}
       <div className="flex items-center gap-3">
-        <span className="text-slate-400 font-mono">
-          Showing <strong className="text-white">{totalFilteredCount}</strong> of{" "}
-          <span className="text-slate-500">{totalCount}</span> Hotspots
+        <span className="text-slate-500 text-xs font-medium">
+          Showing <strong className="text-slate-900 font-bold">{totalFilteredCount}</strong> of{" "}
+          <span className="text-slate-600">{totalCount}</span> Hotspots
         </span>
         <button
           onClick={onResetFilters}
-          className="flex items-center gap-1 text-slate-400 hover:text-white hover:bg-slate-900 px-2.5 py-1 rounded border border-slate-800 transition cursor-pointer"
+          className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold transition cursor-pointer shadow-2xs"
           title="Reset Filters to Default"
         >
-          <RotateCcw className="w-3 h-3" />
+          <RotateCcw className="w-3.5 h-3.5" />
           <span>Reset</span>
         </button>
       </div>

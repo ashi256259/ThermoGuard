@@ -7,28 +7,41 @@ interface AlertsPageProps {
   onSelectHotspot?: (hotspot: HotspotItem) => void;
   onViewOnMap?: (hotspot: HotspotItem) => void;
   onOpenTimeline?: (hotspot: HotspotItem) => void;
+  initialSeverity?: string;
 }
 
 export const AlertsPage: React.FC<AlertsPageProps> = ({
   onSelectHotspot,
   onViewOnMap,
-  onOpenTimeline
+  onOpenTimeline,
+  initialSeverity
 }) => {
   const { user, canResolveAlerts } = useAuth();
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedSeverity, setSelectedSeverity] = useState<string>("All");
+  const [selectedSeverity, setSelectedSeverity] = useState<string>(initialSeverity || "All");
   const [selectedStatus, setSelectedStatus] = useState<string>("All");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSeverity) {
+      setSelectedSeverity(initialSeverity);
+    }
+  }, [initialSeverity]);
 
   const loadAlerts = async () => {
     try {
       setLoading(true);
+      const isHighCritical = selectedSeverity === "HIGH_CRITICAL";
       const data = await apiService.getAlerts({
-        severity: selectedSeverity !== "All" ? selectedSeverity : undefined,
+        severity: selectedSeverity !== "All" && !isHighCritical ? selectedSeverity : undefined,
         status: selectedStatus !== "All" ? selectedStatus : undefined
       });
-      setAlerts(data);
+      if (isHighCritical) {
+        setAlerts(data.filter((a: any) => a.severity === "CRITICAL" || a.severity === "HIGH"));
+      } else {
+        setAlerts(data);
+      }
     } catch (err) {
       console.error("Failed to load alerts", err);
     } finally {
@@ -93,106 +106,113 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
   const resolvedCount = alerts.filter((a) => a.status === "RESOLVED").length;
 
   return (
-    <div className="h-full overflow-y-auto p-4 bg-[#0b1120] text-slate-100 space-y-4">
+    <div className="h-full overflow-y-auto p-6 bg-slate-50 text-slate-800 space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-3.5 border-b border-[#1e293b] gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold text-white">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">
               Incident Alert & Operational Dispatch Center
             </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/20">
+            <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 uppercase">
               Risk Intelligence Active
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-1">
             Deterministic incident alerts generated from multi-factor thermal intensity, industrial proximity, hazard type, and persistence metrics.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={loadAlerts}
-            className="px-3 py-1.5 rounded bg-[#0f172a] hover:bg-[#131d35] border border-[#1e293b] text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-cyan-400" : "text-slate-400"}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-600" : "text-slate-500"}`} />
             <span>Refresh Dispatches</span>
           </button>
         </div>
       </div>
 
       {/* KPI Metrics Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded bg-[#0f172a] border border-[#1e293b]">
-          <div className="text-[11px] text-slate-400">Total Registered Alerts</div>
-          <div className="text-sm font-bold font-mono text-white mt-0.5">{totalCount}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Deduplicated incidents</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Registered Alerts</div>
+          <div className="text-2xl font-black font-mono text-slate-900 mt-1">{totalCount}</div>
+          <div className="text-[11px] text-slate-400 mt-1">Deduplicated incidents</div>
         </div>
-        <div className="p-3.5 rounded bg-[#0f172a] border border-[#1e293b]">
-          <div className="text-[11px] text-slate-400">Critical Priority</div>
-          <div className="text-sm font-bold font-mono text-rose-400 mt-0.5">{criticalCount}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Immediate Tier-3 escalation</div>
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Critical Priority</div>
+          <div className="text-2xl font-black font-mono text-red-600 mt-1">{criticalCount}</div>
+          <div className="text-[11px] text-slate-400 mt-1">Immediate Tier-3 escalation</div>
         </div>
-        <div className="p-3.5 rounded bg-[#0f172a] border border-[#1e293b]">
-          <div className="text-[11px] text-slate-400">High Priority</div>
-          <div className="text-sm font-bold font-mono text-orange-400 mt-0.5">{highCount}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Priority field surveillance</div>
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">High Priority</div>
+          <div className="text-2xl font-black font-mono text-orange-600 mt-1">{highCount}</div>
+          <div className="text-[11px] text-slate-400 mt-1">Priority field surveillance</div>
         </div>
-        <div className="p-3.5 rounded bg-[#0f172a] border border-[#1e293b]">
-          <div className="text-[11px] text-slate-400">Active vs Resolved</div>
-          <div className="text-sm font-bold font-mono text-teal-400 mt-0.5">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active vs Resolved</div>
+          <div className="text-2xl font-black font-mono text-teal-700 mt-1">
             {activeCount} <span className="text-xs text-slate-400 font-normal">/ {resolvedCount} resolved</span>
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Operational resolution status</div>
+          <div className="text-[11px] text-slate-400 mt-1">Operational resolution status</div>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="p-3 rounded bg-[#0f172a] border border-[#1e293b] flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-            <Filter className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Filter Severity:</span>
-          </div>
-          <div className="flex items-center gap-1 bg-[#131d35] p-0.5 rounded border border-[#1e293b]">
-            {["All", "CRITICAL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
-              <button
-                key={sev}
-                onClick={() => setSelectedSeverity(sev)}
-                className={`px-2 py-1 rounded text-[11px] transition-colors ${
-                  selectedSeverity === sev
-                    ? "bg-cyan-500/20 text-cyan-300 font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {sev}
-              </button>
-            ))}
+      <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-xs font-semibold text-slate-700">Severity:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              {[
+                { id: "All", label: "All" },
+                { id: "HIGH_CRITICAL", label: "High & Critical" },
+                { id: "CRITICAL", label: "Critical" },
+                { id: "HIGH", label: "High" },
+                { id: "MEDIUM", label: "Medium" },
+                { id: "LOW", label: "Low" }
+              ].map((sev) => (
+                <button
+                  key={sev.id}
+                  onClick={() => setSelectedSeverity(sev.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedSeverity === sev.id
+                      ? "bg-white text-blue-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {sev.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="h-4 w-px bg-[#1e293b] hidden sm:block" />
+          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
 
-          <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-            <span>Status:</span>
-          </div>
-          <div className="flex items-center gap-1 bg-[#131d35] p-0.5 rounded border border-[#1e293b]">
-            {["All", "ACTIVE", "ACKNOWLEDGED", "RESOLVED"].map((st) => (
-              <button
-                key={st}
-                onClick={() => setSelectedStatus(st)}
-                className={`px-2 py-1 rounded text-[11px] transition-colors ${
-                  selectedStatus === st
-                    ? "bg-teal-500/20 text-teal-300 font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {st}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-700">Status:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              {["All", "ACTIVE", "ACKNOWLEDGED", "RESOLVED"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setSelectedStatus(st)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedStatus === st
+                      ? "bg-white text-teal-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <span className="text-[11px] text-slate-400 font-mono">
+        <span className="text-xs text-slate-500 font-mono font-medium">
           Showing {alerts.length} incident records
         </span>
       </div>
@@ -203,85 +223,85 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
           Loading incident dispatches...
         </div>
       ) : alerts.length === 0 ? (
-        <div className="p-12 rounded bg-[#0f172a] border border-[#1e293b] text-center text-slate-400 text-xs space-y-2">
-          <CheckCircle className="w-8 h-8 text-teal-400 mx-auto" />
-          <p className="text-slate-200 font-medium">No alerts matching current filters</p>
-          <p className="text-slate-400">All registered thermal anomaly sectors are clear or under routine monitoring.</p>
+        <div className="p-12 rounded-2xl bg-white border border-slate-200/80 text-center text-slate-500 text-xs space-y-2 shadow-sm">
+          <CheckCircle className="w-8 h-8 text-emerald-600 mx-auto" />
+          <p className="text-slate-900 font-bold text-sm">No alerts matching current filters</p>
+          <p className="text-slate-500">All registered thermal anomaly sectors are clear or under routine monitoring.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {alerts.map((alert, index) => {
             const isCrit = alert.severity === "CRITICAL";
             const isHigh = alert.severity === "HIGH";
             const isResolved = alert.status === "RESOLVED";
             const isAck = alert.status === "ACKNOWLEDGED";
 
-            const severityBorder = isCrit
-              ? "border-rose-500/30 bg-rose-500/5"
+            const severityStyle = isResolved
+              ? "border-slate-200 bg-white opacity-60"
+              : isCrit
+              ? "border-red-200 bg-red-50/30"
               : isHigh
-              ? "border-orange-500/30 bg-orange-500/5"
-              : "border-amber-500/30 bg-amber-500/5";
+              ? "border-orange-200 bg-orange-50/30"
+              : "border-amber-200 bg-amber-50/30";
 
             return (
               <div
-                key={alert.id || index}
-                className={`p-3.5 rounded border transition-all ${severityBorder} ${
-                  isResolved ? "opacity-60" : "opacity-100"
-                }`}
+                key={alert.id ? `${alert.id}-${index}` : `alert-${index}`}
+                className={`p-5 rounded-2xl border transition-all shadow-xs ${severityStyle}`}
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#1e293b]">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <ShieldAlert className={`w-4 h-4 flex-shrink-0 ${isCrit ? "text-rose-400" : isHigh ? "text-orange-400" : "text-amber-400"}`} />
-                    <span className="font-semibold text-white text-xs">{alert.title}</span>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <ShieldAlert className={`w-4 h-4 flex-shrink-0 ${isCrit ? "text-red-600" : isHigh ? "text-orange-600" : "text-amber-600"}`} />
+                    <span className="font-bold text-slate-900 text-sm tracking-tight">{alert.title}</span>
                     <span
-                      className={`text-[10px] px-2 py-0.5 rounded font-medium border ${
+                      className={`text-[10px] px-2.5 py-0.5 rounded font-bold border uppercase ${
                         isCrit
-                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          ? "bg-red-50 text-red-700 border-red-200"
                           : isHigh
-                          ? "bg-orange-500/10 text-orange-400 border-orange-500/30"
-                          : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          ? "bg-orange-50 text-orange-700 border-orange-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
                       }`}
                     >
                       {alert.severity} Severity
                     </span>
                     <span
-                      className={`text-[10px] px-2 py-0.5 rounded font-medium border ${
+                      className={`text-[10px] px-2.5 py-0.5 rounded font-bold border uppercase ${
                         isResolved
-                          ? "bg-teal-500/10 text-teal-400 border-teal-500/30"
+                          ? "bg-teal-50 text-teal-700 border-teal-200"
                           : isAck
-                          ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
-                          : "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-red-50 text-red-700 border-red-200"
                       }`}
                     >
                       Status: {alert.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
                     <span>{alert.created_at ? new Date(alert.created_at).toLocaleString() : "Live Detection"}</span>
                   </div>
                 </div>
 
-                <div className="mt-2 text-xs text-slate-300 leading-relaxed">
+                <div className="mt-3 text-xs text-slate-700 leading-relaxed font-medium">
                   {alert.description}
                 </div>
 
                 {alert.facility_name && (
-                  <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
-                    <Building2 className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-                    <span>Target Perimeter: <span className="text-slate-200 font-medium">{alert.facility_name}</span></span>
+                  <div className="mt-2.5 flex items-center gap-2 text-xs text-slate-600">
+                    <Building2 className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                    <span>Target Perimeter: <strong className="text-slate-900 font-semibold">{alert.facility_name}</strong></span>
                   </div>
                 )}
 
                 {alert.action_recommended && (
-                  <div className="mt-2.5 p-2.5 rounded bg-[#131d35] border border-[#1e293b] text-xs text-slate-200">
-                    <span className="font-semibold text-amber-400">Emergency Protocol: </span>
-                    <span>{alert.action_recommended}</span>
+                  <div className="mt-3 p-3 rounded-xl bg-white border border-slate-200/80 text-xs text-slate-700 shadow-2xs">
+                    <span className="font-bold text-amber-700">Emergency Protocol: </span>
+                    <span className="font-medium">{alert.action_recommended}</span>
                   </div>
                 )}
 
                 {/* Interactive Action Bar */}
-                <div className="mt-2.5 pt-2.5 border-t border-[#1e293b] flex flex-wrap items-center justify-between gap-2">
+                <div className="mt-4 pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {canResolveAlerts ? (
                       <>
@@ -289,9 +309,9 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                           <button
                             onClick={() => handleUpdateStatus(alert.id, "ACKNOWLEDGED")}
                             disabled={actionLoadingId === alert.id}
-                            className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-cyan-500/30 text-cyan-300 text-[11px] font-medium flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
                           >
-                            <Check className="w-3 h-3" />
+                            <Check className="w-3.5 h-3.5" />
                             <span>Acknowledge Incident</span>
                           </button>
                         )}
@@ -299,9 +319,9 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                           <button
                             onClick={() => handleUpdateStatus(alert.id, "RESOLVED")}
                             disabled={actionLoadingId === alert.id}
-                            className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-teal-500/30 text-teal-300 text-[11px] font-medium flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
                           >
-                            <ShieldCheck className="w-3 h-3" />
+                            <ShieldCheck className="w-3.5 h-3.5" />
                             <span>Mark Resolved</span>
                           </button>
                         )}
@@ -309,45 +329,45 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                           <button
                             onClick={() => handleUpdateStatus(alert.id, "ACTIVE")}
                             disabled={actionLoadingId === alert.id}
-                            className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-rose-500/30 text-rose-300 text-[11px] font-medium flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
                           >
                             <span>Reopen Incident</span>
                           </button>
                         )}
                       </>
                     ) : (
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#090f1b] border border-[#182640] text-[10px] text-slate-400">
-                        <Lock className="w-2.5 h-2.5 text-slate-500" />
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-500">
+                        <Lock className="w-3 h-3 text-slate-400" />
                         <span>Analyst Clearance (Inspect & Dossier Only)</span>
                       </div>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {alert.event_id && onSelectHotspot && (
                       <button
                         onClick={() => handleInspect(alert.event_id)}
-                        className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-cyan-500/20 text-cyan-300 text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                       >
                         <span>Dossier</span>
-                        <ArrowUpRight className="w-3 h-3 text-cyan-400" />
+                        <ArrowUpRight className="w-3.5 h-3.5 text-blue-600" />
                       </button>
                     )}
                     {alert.event_id && onViewOnMap && (
                       <button
                         onClick={() => handleShowOnMap(alert.event_id)}
-                        className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-emerald-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                       >
-                        <MapPin className="w-3 h-3 text-emerald-400" />
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Map</span>
                       </button>
                     )}
                     {alert.event_id && onOpenTimeline && (
                       <button
                         onClick={() => handleShowTimeline(alert.event_id)}
-                        className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-teal-500/20 text-teal-300 text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-teal-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                       >
-                        <History className="w-3 h-3 text-teal-400" />
+                        <History className="w-3.5 h-3.5 text-teal-600" />
                         <span>Timeline</span>
                       </button>
                     )}

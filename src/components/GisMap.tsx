@@ -50,6 +50,8 @@ export const GisMap: React.FC<GisMapProps> = ({
         return "#10b981"; // Emerald
       case "Mining":
         return "#0284c7"; // Cyan
+      case "ML_UNAVAILABLE":
+        return "#d97706"; // Amber
       default:
         return "#64748b"; // Slate
     }
@@ -107,11 +109,11 @@ export const GisMap: React.FC<GisMapProps> = ({
         className: "custom-facility-marker",
         html: `
           <div style="
-            background-color: #0a0c10;
+            background-color: #ffffff;
             border: 1.5px solid #0284c7;
             border-radius: 4px;
             padding: 3px 6px;
-            color: #e0f2fe;
+            color: #0369a1;
             font-size: 10px;
             font-family: monospace;
             font-weight: bold;
@@ -131,9 +133,9 @@ export const GisMap: React.FC<GisMapProps> = ({
 
       const marker = L.marker([poi.lat, poi.lon], { icon: facilityIcon });
       marker.bindPopup(`
-        <div style="background-color: #0a0c10; color: #f8fafc; font-family: sans-serif; font-size: 12px; padding: 6px; border-radius: 6px; border: 1px solid #1e293b;">
-          <strong style="font-size: 13px; color: #38bdf8;">${poi.name}</strong><br/>
-          <span style="color: #94a3b8; font-size: 11px;">TYPE: ${poi.type.replace("_", " ").toUpperCase()}</span>
+        <div style="background-color: #ffffff; color: #0f172a; font-family: system-ui, sans-serif; font-size: 12px; padding: 10px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <strong style="font-size: 13px; color: #1e40af; display: block; margin-bottom: 2px;">${poi.name}</strong>
+          <span style="color: #64748b; font-size: 11px; font-weight: 600;">TYPE: ${poi.type.replace("_", " ").toUpperCase()}</span>
         </div>
       `);
       facilitiesLayerRef.current?.addLayer(marker);
@@ -246,46 +248,46 @@ export const GisMap: React.FC<GisMapProps> = ({
   const handleResetView = () => mapInstanceRef.current?.setView([22.5, 78.5], 5);
 
   return (
-    <div className="relative w-full h-full bg-[#0b1120] overflow-hidden flex-1">
+    <div className="relative w-full h-full bg-slate-50 overflow-hidden flex-1">
       {/* Map Target Div */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
       {/* Map Control Overlay (Top-Right) */}
-      <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2.5">
         {/* Layer Toggles Panel */}
-        <div className="bg-[#0f172a]/95 backdrop-blur-sm border border-[#1e293b] rounded p-2.5 text-xs shadow-lg">
-          <div className="flex items-center gap-1.5 text-slate-300 font-medium mb-1.5 pb-1 border-b border-[#1e293b]">
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">GIS Layers</span>
+        <div className="bg-white/95 backdrop-blur-xs border border-slate-200/80 rounded-2xl p-3 text-xs shadow-2xs">
+          <div className="flex items-center gap-2 text-slate-800 font-bold mb-2 pb-1.5 border-b border-slate-100">
+            <Layers className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">GIS Layers</span>
           </div>
 
-          <div className="flex flex-col gap-1.5 text-slate-300 text-xs">
-            <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+          <div className="flex flex-col gap-2 text-slate-700 text-xs font-medium">
+            <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900">
               <input
                 type="checkbox"
                 checked={showHotspots}
                 onChange={(e) => setShowHotspots(e.target.checked)}
-                className="accent-cyan-600 rounded"
+                className="accent-blue-600 rounded cursor-pointer"
               />
               <span>FIRMS Hotspots</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+            <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900">
               <input
                 type="checkbox"
                 checked={showFacilities}
                 onChange={(e) => setShowFacilities(e.target.checked)}
-                className="accent-cyan-600 rounded"
+                className="accent-blue-600 rounded cursor-pointer"
               />
               <span>Industrial POIs</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+            <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900">
               <input
                 type="checkbox"
                 checked={showBuffers}
                 onChange={(e) => setShowBuffers(e.target.checked)}
-                className="accent-cyan-600 rounded"
+                className="accent-blue-600 rounded cursor-pointer"
               />
               <span>Hazard Buffers</span>
             </label>
@@ -293,25 +295,25 @@ export const GisMap: React.FC<GisMapProps> = ({
         </div>
 
         {/* Navigation / Zoom Controls */}
-        <div className="bg-[#0f172a]/95 backdrop-blur-sm border border-[#1e293b] rounded flex flex-col p-0.5 shadow-lg text-slate-400">
+        <div className="bg-white/95 backdrop-blur-xs border border-slate-200/80 rounded-2xl flex flex-col p-1 shadow-2xs text-slate-600">
           <button
             onClick={handleZoomIn}
-            className="p-1.5 hover:bg-[#1e293b] hover:text-white rounded transition cursor-pointer"
+            className="p-2 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition cursor-pointer"
             title="Zoom In"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
             onClick={handleZoomOut}
-            className="p-1.5 hover:bg-[#1e293b] hover:text-white rounded transition cursor-pointer"
+            className="p-2 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition cursor-pointer"
             title="Zoom Out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
-          <div className="h-px bg-[#1e293b] my-0.5" />
+          <div className="h-px bg-slate-100 my-0.5" />
           <button
             onClick={handleResetView}
-            className="p-1.5 hover:bg-[#1e293b] hover:text-white rounded transition cursor-pointer"
+            className="p-2 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition cursor-pointer"
             title="Reset to All India Overview"
           >
             <Maximize2 className="w-4 h-4" />
@@ -320,40 +322,40 @@ export const GisMap: React.FC<GisMapProps> = ({
       </div>
 
       {/* Floating Map Legend (Bottom-Left) */}
-      <div className="absolute bottom-4 left-4 z-10 bg-[#0f172a]/95 backdrop-blur-sm border border-[#1e293b] rounded p-2.5 text-xs shadow-lg max-w-xs">
-        <span className="font-semibold text-slate-400 text-[10px] block mb-1.5 uppercase tracking-wider">
+      <div className="absolute bottom-5 left-5 z-10 bg-white/95 backdrop-blur-xs border border-slate-200/80 rounded-2xl p-3.5 text-xs shadow-2xs max-w-xs">
+        <span className="font-bold text-slate-500 text-[10px] block mb-2 uppercase tracking-wider">
           Source Classification Key
         </span>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-            <span className="text-slate-300">Industrial Fire</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+            <span className="text-slate-700 font-medium">Industrial Fire</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-            <span className="text-slate-300">Gas Flare</span>
+            <span className="text-slate-700 font-medium">Gas Flare</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <span className="text-slate-300">Agricultural</span>
+            <span className="text-slate-700 font-medium">Agricultural</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <span className="text-slate-300">Wildfire</span>
+            <span className="text-slate-700 font-medium">Wildfire</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
-            <span className="text-slate-300">Mining</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+            <span className="text-slate-700 font-medium">Mining</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
-            <span className="text-slate-300">Other</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+            <span className="text-slate-700 font-medium">Other</span>
           </div>
         </div>
 
-        <div className="mt-2 pt-1.5 border-t border-[#1e293b] flex items-center justify-between text-[10px] text-slate-400">
+        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
           <span>Dotted: 300m / 1km Buffers</span>
-          <span className="text-rose-400">Pulsing: High/Critical</span>
+          <span className="text-red-600 font-semibold">Pulsing: High/Critical</span>
         </div>
       </div>
     </div>

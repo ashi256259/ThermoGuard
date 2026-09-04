@@ -17,7 +17,8 @@ CREATE TYPE source_class_enum AS ENUM (
     'Agricultural Burning',
     'Wildfire',
     'Mining',
-    'Other'
+    'Other',
+    'ML_UNAVAILABLE'
 );
 
 CREATE TYPE risk_level_enum AS ENUM (

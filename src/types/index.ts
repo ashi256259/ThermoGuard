@@ -4,7 +4,8 @@ export type SourceClass =
   | "Agricultural Burning"
   | "Wildfire"
   | "Mining"
-  | "Other";
+  | "Other"
+  | "ML_UNAVAILABLE";
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
@@ -175,6 +176,10 @@ export interface StatisticsData {
   active_alerts: number;
   data_provider_mode: string;
   last_updated: string;
+  by_class?: Record<string, number>;
+  by_risk?: Record<string, number>;
+  live_count?: number;
+  demo_count?: number;
 }
 
 export interface DemoScenario {

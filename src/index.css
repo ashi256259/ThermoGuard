@@ -1,69 +1,39 @@
 @import "tailwindcss";
 
-/* ==========================================================================
-   THERMOGUARD AI — Geospatial Intelligence & Satellite Operations Dashboard
-   Command Center Aesthetic: Dark Navy/Charcoal, Cyan/Teal Telemetry, Amber Thermal, Red Critical
-   ========================================================================== */
-
 :root {
-  color-scheme: dark;
-  --bg-navy-950: #0b1120;
-  --bg-navy-900: #0f172a;
-  --bg-navy-850: #131d35;
-  --bg-navy-800: #1a2744;
-  --border-subtle: #1e293b;
-  --border-focus: #0284c7;
-  --accent-cyan: #06b6d4;
-  --accent-teal: #14b8a6;
-  --thermal-amber: #f59e0b;
-  --thermal-orange: #f97316;
-  --risk-critical: #ef4444;
+  color-scheme: light;
 }
 
 body {
-  background-color: #0b1120;
-  color: #e2e8f0;
-  overflow: hidden;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  background-color: #F8FAFC;
+  color: #0f172a;
+  overflow-x: hidden;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
-/* Subtle Technical Grid Overlay for Command Center atmosphere */
-.command-grid-overlay {
-  background-image: 
-    linear-gradient(to right, rgba(20, 184, 166, 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(20, 184, 166, 0.02) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-/* Tactical Dot Matrix */
-.tactical-dot-matrix {
-  background-image: radial-gradient(#1e293b 0.75px, transparent 0.75px);
-  background-size: 16px 16px;
-}
-
-/* Leaflet Dark Command Map Styling */
+/* Light clean Map Styling */
 .leaflet-container {
-  background-color: #0b1120 !important;
+  background-color: #F8FAFC !important;
   font-family: inherit;
 }
 
 .leaflet-tile-pane {
-  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  /* Ensure default OpenStreetMap or other standard layers are not inverted */
 }
 
 .tactical-map-tooltip {
-  background-color: #0f172a !important;
-  border: 1px solid #1e293b !important;
-  color: #f8fafc !important;
-  font-size: 11px !important;
-  font-family: ui-sans-serif, system-ui, sans-serif !important;
-  border-radius: 4px !important;
-  padding: 6px 10px !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 500;
+  border-radius: 6px !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
 
 .tactical-map-tooltip:before {
-  border-top-color: #1e293b !important;
+  border-top-color: #e2e8f0 !important;
 }
 
 .custom-hotspot-marker, .custom-facility-marker {
@@ -73,85 +43,41 @@ body {
 
 /* Leaflet Zoom Control Styling */
 .leaflet-bar {
-  border: 1px solid #1e293b !important;
-  border-radius: 4px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 6px !important;
   overflow: hidden !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06) !important;
 }
 
 .leaflet-bar a {
-  background-color: #0f172a !important;
-  color: #94a3b8 !important;
-  border-bottom: 1px solid #1e293b !important;
-  width: 28px !important;
-  height: 28px !important;
-  line-height: 28px !important;
+  background-color: #ffffff !important;
+  color: #475569 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
 }
 
 .leaflet-bar a:hover {
-  background-color: #1e293b !important;
-  color: #38bdf8 !important;
+  background-color: #f8fafc !important;
+  color: #0284c7 !important;
 }
 
-/* Precision Scrollbars */
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b1120;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 2px;
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-/* ==========================================================================
-   Leaflet Tactical Map Markers — CSS-Based Risk Shapes & Muted Pulsing
-   ========================================================================== */
-
-@keyframes muted-pulse-critical {
-  0% {
-    transform: scale(0.8);
-    opacity: 0.5;
-  }
-  60% {
-    transform: scale(1.9);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1.9);
-    opacity: 0;
-  }
-}
-
-@keyframes muted-pulse-high {
-  0% {
-    transform: scale(0.85);
-    opacity: 0.4;
-  }
-  65% {
-    transform: scale(1.65);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1.65);
-    opacity: 0;
-  }
-}
-
-.pulse-ring-critical {
-  animation: muted-pulse-critical 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-  will-change: transform, opacity;
-}
-
-.pulse-ring-high {
-  animation: muted-pulse-high 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-  will-change: transform, opacity;
+  background: #94a3b8;
 }

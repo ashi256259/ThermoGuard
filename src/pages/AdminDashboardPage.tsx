@@ -41,15 +41,23 @@ interface AdminDashboardPageProps {
   onSelectHotspot?: (hotspot: HotspotItem) => void;
   onViewOnMap?: (hotspot: HotspotItem) => void;
   onOpenTimeline?: (hotspot: HotspotItem) => void;
+  initialTab?: AdminTab;
 }
 
 export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   onSelectHotspot,
   onViewOnMap,
-  onOpenTimeline
+  onOpenTimeline,
+  initialTab
 }) => {
   const { user, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab || "overview");
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
@@ -252,18 +260,18 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   if (!isAdmin) {
     return (
-      <div className="h-full flex items-center justify-center p-6 bg-[#070b14] text-slate-100">
-        <div className="max-w-md w-full p-6 rounded-xl bg-[#0b1220] border border-rose-500/30 text-center space-y-4">
-          <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+      <div className="h-full flex items-center justify-center p-6 bg-slate-50 text-slate-800">
+        <div className="max-w-md w-full p-6 rounded-xl bg-white border border-rose-500/30 text-center space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/20 border border-rose-200 flex items-center justify-center text-rose-700">
             <Lock className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-white">Restricted Command Authorization</h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <h2 className="text-base font-semibold text-slate-900">Restricted Command Authorization</h2>
+            <p className="text-xs text-slate-500 mt-1">
               Your active clearance role ({user?.role || "ANALYST"}) is designated for intelligence analysis and does not have administrative command privileges.
             </p>
           </div>
-          <div className="p-3 rounded bg-[#090f1b] border border-[#172238] text-[11px] font-mono text-slate-400">
+          <div className="p-3 rounded bg-white border border-slate-200 text-[11px] font-mono text-slate-500">
             Required Clearance: Level 4 Restricted (Command Authority / Administrator)
           </div>
         </div>
@@ -274,37 +282,37 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const isLive = overviewData?.system?.data_mode === "LIVE_SATELLITE_API";
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#070b14] text-slate-100 font-sans">
+    <div className="h-full flex flex-col overflow-hidden bg-slate-50 text-slate-800 font-sans">
       {/* 1. TOP COMMAND BAR */}
-      <header className="flex-shrink-0 px-4 py-3 bg-[#090e1a] border-b border-[#152033] flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-            <ShieldAlert className="w-4 h-4" />
+      <header className="flex-shrink-0 px-6 py-4 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">
+            <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold text-white tracking-tight">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-base font-bold text-slate-900 tracking-tight">
                 Command Authority & Administration Console
               </h1>
-              <span className="px-2 py-0.5 rounded font-mono text-[9px] bg-rose-500/10 text-rose-300 border border-rose-500/30">
+              <span className="px-2.5 py-0.5 rounded font-mono text-[10px] font-bold bg-red-50 text-red-700 border border-red-200 uppercase">
                 L4 RESTRICTED
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-xs text-slate-500 mt-0.5">
               National Technical Research Organisation (NTRO) • SIH26162
             </p>
           </div>
         </div>
 
         {/* Global Action & Status Strip */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Data Mode Switcher */}
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-[#0c1424] border border-[#182640]">
-            <span className="text-[10px] text-slate-400">Data Feed:</span>
-            <span className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
+            <span className="text-xs font-semibold text-slate-500">Data Feed:</span>
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
               isLive
-                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                : "bg-teal-500/20 text-teal-300 border border-teal-500/40"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-teal-50 text-teal-700 border border-teal-200"
             }`}>
               {isLive ? "LIVE NASA SATELLITE" : "CALIBRATED DEMO FEED"}
             </span>
@@ -312,9 +320,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             <button
               onClick={handleToggleDataMode}
               disabled={actionLoadingId === "mode-toggle"}
-              className="px-2 py-0.5 rounded bg-[#131f36] hover:bg-[#1a2b4a] border border-[#23375c] text-[10px] text-cyan-300 transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
+              className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-blue-700 transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 shadow-2xs"
             >
-              <Power className="w-2.5 h-2.5" />
+              <Power className="w-3 h-3" />
               <span>{isLive ? "Switch to Demo" : "Switch to Live"}</span>
             </button>
           </div>
@@ -322,9 +330,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
           <button
             onClick={loadAllAdminData}
             disabled={refreshing}
-            className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#15233e] border border-[#1e2f4f] text-xs text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-cyan-400" : "text-slate-400"}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-blue-600" : "text-slate-500"}`} />
             <span>Refresh Telemetry</span>
           </button>
         </div>
@@ -332,33 +340,33 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
       {/* Action Notification Toast */}
       {actionMessage && (
-        <div className={`px-4 py-2 text-xs flex items-center justify-between border-b ${
+        <div className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between border-b ${
           actionMessage.type === "success"
-            ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
+            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
             : actionMessage.type === "error"
-            ? "bg-rose-950/60 text-rose-300 border-rose-800/60"
-            : "bg-cyan-950/60 text-cyan-300 border-cyan-800/60"
+            ? "bg-red-50 text-red-800 border-red-200"
+            : "bg-blue-50 text-blue-800 border-blue-200"
         }`}>
           <div className="flex items-center gap-2">
-            {actionMessage.type === "success" && <CheckCircle2 className="w-3.5 h-3.5" />}
-            {actionMessage.type === "error" && <AlertTriangle className="w-3.5 h-3.5" />}
-            {actionMessage.type === "info" && <Activity className="w-3.5 h-3.5" />}
+            {actionMessage.type === "success" && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+            {actionMessage.type === "error" && <AlertTriangle className="w-4 h-4 text-red-600" />}
+            {actionMessage.type === "info" && <Activity className="w-4 h-4 text-blue-600" />}
             <span>{actionMessage.text}</span>
           </div>
-          <button onClick={() => setActionMessage(null)} className="text-slate-400 hover:text-white">
-            <XCircle className="w-3.5 h-3.5" />
+          <button onClick={() => setActionMessage(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+            <XCircle className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* 2. TAB NAVIGATION BAR */}
-      <div className="flex-shrink-0 px-4 bg-[#090e1a] border-b border-[#152033] flex items-center gap-1 overflow-x-auto">
+      <div className="flex-shrink-0 px-6 bg-white border-b border-slate-200 flex items-center gap-2 overflow-x-auto py-2">
         <button
           onClick={() => setActiveTab("overview")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === "overview"
-              ? "border-cyan-400 text-cyan-300 bg-[#0f182c]"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
           }`}
         >
           <Activity className="w-3.5 h-3.5" />
@@ -367,16 +375,16 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
         <button
           onClick={() => setActiveTab("alerts")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === "alerts"
-              ? "border-cyan-400 text-cyan-300 bg-[#0f182c]"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
           }`}
         >
           <ShieldAlert className="w-3.5 h-3.5" />
           <span>Incident Alert Authority</span>
           {alerts.filter(a => a.status === "ACTIVE").length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full font-mono text-[9px] bg-rose-500 text-white font-bold">
+            <span className="px-1.5 py-0.2 rounded-full font-mono text-[9px] bg-red-600 text-white font-bold">
               {alerts.filter(a => a.status === "ACTIVE").length}
             </span>
           )}
@@ -384,10 +392,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
         <button
           onClick={() => setActiveTab("providers")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === "providers"
-              ? "border-cyan-400 text-cyan-300 bg-[#0f182c]"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
           }`}
         >
           <Radio className="w-3.5 h-3.5" />
@@ -396,40 +404,40 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
         <button
           onClick={() => setActiveTab("users")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === "users"
-              ? "border-cyan-400 text-cyan-300 bg-[#0f182c]"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
           }`}
         >
           <Users className="w-3.5 h-3.5" />
           <span>User & Clearance Roles</span>
-          <span className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-slate-800 text-slate-300">
+          <span className="px-2 py-0.2 rounded font-mono text-[10px] font-bold bg-slate-100 text-slate-700">
             {usersList.length}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab("sessions")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === "sessions"
-              ? "border-cyan-400 text-cyan-300 bg-[#0f182c]"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
           }`}
         >
           <Key className="w-3.5 h-3.5" />
           <span>Active Sessions</span>
-          <span className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-emerald-500/20 text-emerald-300">
+          <span className="px-2 py-0.2 rounded font-mono text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             {sessionsList.length}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab("config")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === "config"
-              ? "border-cyan-400 text-cyan-300 bg-[#0f182c]"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
           }`}
         >
           <Sliders className="w-3.5 h-3.5" />
@@ -438,187 +446,201 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       </div>
 
       {/* 3. TAB CONTENT AREA */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-4">
+      <main className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* ========================================== */}
         {/* TAB 1: SYSTEM OVERVIEW                     */}
         {/* ========================================== */}
         {activeTab === "overview" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* KPI Summary Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3.5 rounded-lg bg-[#0c1424] border border-[#182640]">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Total Hotspots Ingested</span>
-                  <Database className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>Total Hotspots</span>
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+                    <Database className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-xl font-bold font-mono text-white mt-1">
+                <div className="text-2xl font-bold font-mono text-slate-900 mt-2 tracking-tight">
                   {overviewData?.counts?.total_hotspots || 0}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                  <span className="text-emerald-400 font-mono">{overviewData?.counts?.live_hotspots || 0} Live</span>
+                <div className="text-xs text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                  <span className="text-emerald-700 font-mono font-bold">{overviewData?.counts?.live_hotspots || 0} Live</span>
                   <span>•</span>
-                  <span className="text-teal-400 font-mono">{overviewData?.counts?.demo_hotspots || 0} Demo</span>
+                  <span className="text-slate-600 font-mono">{overviewData?.counts?.demo_hotspots || 0} Demo</span>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-lg bg-[#0c1424] border border-[#182640]">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
                   <span>Incident Alerts</span>
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                  <div className="w-8 h-8 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-xl font-bold font-mono text-rose-400 mt-1">
+                <div className="text-2xl font-bold font-mono text-red-700 mt-2 tracking-tight">
                   {overviewData?.counts?.alerts?.active || 0}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">
-                  {overviewData?.counts?.alerts?.resolved || 0} Resolved • {overviewData?.counts?.alerts?.acknowledged || 0} In Progress
+                <div className="text-xs text-slate-500 mt-1 font-medium truncate">
+                  {overviewData?.counts?.alerts?.resolved || 0} Resolved • {overviewData?.counts?.alerts?.acknowledged || 0} Triaged
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-lg bg-[#0c1424] border border-[#182640]">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Registered Accounts</span>
-                  <Users className="w-3.5 h-3.5 text-teal-400" />
+              <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>Registered Personnel</span>
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                    <Users className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-xl font-bold font-mono text-teal-300 mt-1">
+                <div className="text-2xl font-bold font-mono text-slate-900 mt-2 tracking-tight">
                   {overviewData?.counts?.registered_users || 0}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                <div className="text-xs text-slate-500 mt-1 font-mono font-medium">
                   {overviewData?.counts?.active_sessions || 0} Active JWT Sessions
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-lg bg-[#0c1424] border border-[#182640]">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
                   <span>System Uptime</span>
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                    <Clock className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-xl font-bold font-mono text-emerald-400 mt-1 truncate">
+                <div className="text-2xl font-bold font-mono text-emerald-700 mt-2 truncate tracking-tight">
                   {overviewData?.system?.uptime_formatted || "Nominal"}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                  Node.js {overviewData?.system?.node_version || "Unknown"}
+                <div className="text-xs text-slate-500 mt-1 font-mono font-medium">
+                  Node.js {overviewData?.system?.node_version || "v20"}
                 </div>
               </div>
             </div>
 
             {/* Telemetry Architecture Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Process & Memory Telemetry */}
-              <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-                <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-xs font-semibold text-white">Runtime & Memory Diagnostics</h3>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                      <Cpu className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900">Runtime & Memory Diagnostics</h3>
                   </div>
-                  <span className="px-2 py-0.5 rounded font-mono text-[9px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                  <span className="px-2.5 py-0.5 rounded font-mono text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     STATUS: NOMINAL
                   </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">RSS Resident Memory:</span>
-                    <span className="font-mono text-cyan-300">{overviewData?.system?.memory_mb?.rss || 0} MB</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">RSS Resident Memory:</span>
+                    <span className="font-mono font-bold text-blue-700">{overviewData?.system?.memory_mb?.rss || 0} MB</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Heap Total Allocated:</span>
-                    <span className="font-mono text-slate-200">{overviewData?.system?.memory_mb?.heap_total || 0} MB</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Heap Total Allocated:</span>
+                    <span className="font-mono text-slate-700 font-bold">{overviewData?.system?.memory_mb?.heap_total || 0} MB</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Heap In-Use:</span>
-                    <span className="font-mono text-emerald-300">{overviewData?.system?.memory_mb?.heap_used || 0} MB</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Heap In-Use:</span>
+                    <span className="font-mono text-emerald-700 font-bold">{overviewData?.system?.memory_mb?.heap_used || 0} MB</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Host Architecture:</span>
-                    <span className="font-mono text-slate-300">{systemHealth?.telemetry?.cpu?.arch || "x64"} ({systemHealth?.telemetry?.cpu?.platform || "linux"})</span>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500 font-medium">Host Architecture:</span>
+                    <span className="font-mono text-slate-700 font-bold">{systemHealth?.telemetry?.cpu?.arch || "x64"} ({systemHealth?.telemetry?.cpu?.platform || "linux"})</span>
                   </div>
                 </div>
               </div>
 
               {/* Spatial PostGIS Engine Telemetry */}
-              <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-                <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-teal-400" />
-                    <h3 className="text-xs font-semibold text-white">PostGIS & Machine Learning Subsystem</h3>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center text-teal-600">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900">PostGIS & Machine Learning Subsystem</h3>
                   </div>
-                  <span className="px-2 py-0.5 rounded font-mono text-[9px] bg-teal-500/10 text-teal-300 border border-teal-500/30">
+                  <span className="px-2.5 py-0.5 rounded font-mono text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
                     INDEX: GIST ACTIVE
                   </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">PostGIS Geometry Index:</span>
-                    <span className="font-mono text-emerald-400">geometry_gist_idx (Spatial Tree)</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">PostGIS Geometry Index:</span>
+                    <span className="font-mono text-emerald-700 font-bold">geometry_gist_idx (Spatial Tree)</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">ML Classifier Architecture:</span>
-                    <span className="font-mono text-cyan-300">Random Forest Ensemble (100 Trees)</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">ML Classifier Architecture:</span>
+                    <span className="font-mono text-blue-700 font-bold">Random Forest Ensemble (100 Trees)</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Feature Engineering Pipeline:</span>
-                    <span className="font-mono text-slate-200">14 Thermal, Spatial & Temporal Features</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Feature Engineering Pipeline:</span>
+                    <span className="font-mono text-slate-700 font-bold">14 Thermal, Spatial & Temporal Features</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Model Version:</span>
-                    <span className="font-mono text-amber-300">random_forest_v1.0.0</span>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500 font-medium">Model Version:</span>
+                    <span className="font-mono text-amber-700 font-bold">random_forest_v1.0.0</span>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Provider Connectivity Grid */}
-            <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-              <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-cyan-400" />
-                  <h3 className="text-xs font-semibold text-white">Geospatial Data Provider Interfaces</h3>
+            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Geospatial Data Provider Interfaces</h3>
                 </div>
                 <button
                   onClick={() => setActiveTab("providers")}
-                  className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
                 >
                   <span>Manage Ingestion</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238] space-y-1.5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-white">NASA FIRMS API</span>
-                    <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] ${
-                      isLive ? "bg-emerald-500/20 text-emerald-300" : "bg-teal-500/20 text-teal-300"
+                    <span className="font-bold text-slate-900">NASA FIRMS API</span>
+                    <span className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold ${
+                      isLive ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-teal-50 text-teal-700 border border-teal-200"
                     }`}>
                       {isLive ? "LIVE NRT" : "CALIBRATED FEED"}
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-xs text-slate-500 leading-relaxed">
                     Thermal observations from VIIRS (SNPP/NOAA-20) & MODIS sensors.
                   </p>
                 </div>
 
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238] space-y-1.5">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-white">OpenStreetMap (OSM)</span>
-                    <span className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-emerald-500/20 text-emerald-300">
+                    <span className="font-bold text-slate-900">OpenStreetMap (OSM)</span>
+                    <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                       POSTGIS SPATIAL
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-xs text-slate-500 leading-relaxed">
                     Industrial refinery, gas flare stack, petrochemical & power plant cadastre.
                   </p>
                 </div>
 
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238] space-y-1.5">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-white">ESA WorldCover 10m</span>
-                    <span className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-emerald-500/20 text-emerald-300">
+                    <span className="font-bold text-slate-900">ESA WorldCover 10m</span>
+                    <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                       LAND COVER 10M
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-xs text-slate-500 leading-relaxed">
                     High-resolution cropland, dense forest reserve, cropland, and built-up land-use context.
                   </p>
                 </div>
@@ -631,91 +653,93 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         {/* TAB 2: INCIDENT ALERT AUTHORITY             */}
         {/* ========================================== */}
         {activeTab === "alerts" && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-[#182640] gap-2">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-3">
               <div>
-                <h2 className="text-xs font-semibold text-white">
+                <h2 className="text-sm font-bold text-slate-900">
                   Incident Alert Management & Command Audit Trail
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Command-level triage, officer acknowledgement, hazard resolution, and timestamped forensic trail.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Total Alerts: {alerts.length}</span>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                  Total Alerts: {alerts.length}
+                </span>
               </div>
             </div>
 
             {/* Alerts List with Audit Logs */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               {alerts.length === 0 ? (
-                <div className="p-8 text-center bg-[#0c1424] border border-[#182640] rounded-lg text-slate-400 text-xs">
+                <div className="p-12 text-center bg-white border border-slate-200/80 rounded-2xl text-slate-500 text-xs shadow-2xs">
                   No incident alerts logged. All thermal perimeters nominal.
                 </div>
               ) : (
-                alerts.map((alert) => {
+                alerts.map((alert, idx) => {
                   const isAck = alert.status === "ACKNOWLEDGED";
                   const isResolved = alert.status === "RESOLVED";
                   const isExpanded = expandedAlertId === alert.id;
 
                   return (
                     <div
-                      key={alert.id}
-                      className={`p-3.5 rounded-lg border transition-all ${
+                      key={alert.id ? `${alert.id}-${idx}` : `alert-${idx}`}
+                      className={`p-5 rounded-2xl border transition-all ${
                         isResolved
-                          ? "bg-[#090f1b] border-[#182640] opacity-85"
+                          ? "bg-white border-slate-200/80 opacity-85 shadow-2xs"
                           : alert.severity === "CRITICAL"
-                          ? "bg-[#140c17] border-rose-500/40 shadow-sm"
-                          : "bg-[#0c1424] border-amber-500/30"
+                          ? "bg-white border-red-200 shadow-sm"
+                          : "bg-white border-amber-200 shadow-2xs"
                       }`}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                        <div className="space-y-1">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div className="space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold border ${
+                            <span className={`px-2.5 py-0.5 rounded font-mono text-[10px] font-bold border ${
                               alert.severity === "CRITICAL"
-                                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                                : "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
                             }`}>
                               {alert.severity} HAZARD
                             </span>
 
-                            <span className={`px-2 py-0.5 rounded font-mono text-[9px] border ${
+                            <span className={`px-2.5 py-0.5 rounded font-mono text-[10px] font-bold border ${
                               isResolved
-                                ? "bg-teal-500/20 text-teal-300 border-teal-500/40"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 : isAck
-                                ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
-                                : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : "bg-red-50 text-red-700 border-red-200"
                             }`}>
                               STATUS: {alert.status}
                             </span>
 
-                            <span className="text-xs font-semibold text-white">
+                            <span className="text-sm font-bold text-slate-900">
                               {alert.title}
                             </span>
                           </div>
 
-                          <p className="text-xs text-slate-300">
+                          <p className="text-xs text-slate-600 leading-relaxed">
                             {alert.description}
                           </p>
 
                           {alert.facility_name && (
-                            <div className="text-[11px] text-cyan-300 font-mono">
+                            <div className="text-xs text-blue-700 font-mono font-medium">
                               Perimeter Target: {alert.facility_name}
                             </div>
                           )}
 
                           {alert.action_recommended && (
-                            <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-800/40 px-2 py-1 rounded">
-                              <span className="font-semibold">Recommended Protocol: </span>
+                            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl font-medium">
+                              <span className="font-bold">Recommended Protocol: </span>
                               {alert.action_recommended}
                             </div>
                           )}
                         </div>
 
                         {/* Officer Action Buttons */}
-                        <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+                        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                           {!isAck && !isResolved && (
                             <button
                               onClick={() => {
@@ -723,9 +747,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                 setActionNotes("");
                               }}
                               disabled={actionLoadingId === `alert-${alert.id}`}
-                              className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-cyan-500/40 text-cyan-300 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                              className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                             >
-                              <Check className="w-3 h-3" />
+                              <Check className="w-3.5 h-3.5" />
                               <span>Acknowledge</span>
                             </button>
                           )}
@@ -737,9 +761,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                 setActionNotes("");
                               }}
                               disabled={actionLoadingId === `alert-${alert.id}`}
-                              className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-teal-500/40 text-teal-300 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                             >
-                              <ShieldCheck className="w-3 h-3" />
+                              <ShieldCheck className="w-3.5 h-3.5" />
                               <span>Resolve</span>
                             </button>
                           )}
@@ -748,7 +772,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <button
                               onClick={() => handleExecuteAlertAction(alert.id, "REOPEN")}
                               disabled={actionLoadingId === `alert-${alert.id}`}
-                              className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#131d35] border border-rose-500/40 text-rose-300 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                              className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                             >
                               <span>Reopen</span>
                             </button>
@@ -756,44 +780,44 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
                           <button
                             onClick={() => setExpandedAlertId(isExpanded ? null : alert.id)}
-                            className="px-2 py-1 rounded bg-[#090f1b] border border-[#1c2a44] text-slate-400 hover:text-slate-200 text-[11px] flex items-center gap-1 cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
                           >
-                            <History className="w-3 h-3" />
+                            <History className="w-3.5 h-3.5" />
                             <span>Audit Trail</span>
-                            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                           </button>
                         </div>
                       </div>
 
                       {/* Expandable Forensic Audit Trail */}
                       {isExpanded && (
-                        <div className="mt-3 pt-3 border-t border-[#182640] space-y-2 bg-[#080d17] p-3 rounded-lg">
-                          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300">
-                            <span className="flex items-center gap-1.5">
-                              <History className="w-3.5 h-3.5 text-cyan-400" />
+                        <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                            <span className="flex items-center gap-2">
+                              <History className="w-4 h-4 text-blue-600" />
                               <span>Forensic Operational Audit Trail</span>
                             </span>
-                            <span className="font-mono text-slate-400 text-[10px]">Alert ID: {alert.id}</span>
+                            <span className="font-mono text-slate-500 text-[11px]">Alert ID: {alert.id}</span>
                           </div>
 
-                          <div className="space-y-1.5 text-xs">
+                          <div className="space-y-2 text-xs">
                             {alert.audit_trail && alert.audit_trail.length > 0 ? (
                               alert.audit_trail.map((log: any, idx: number) => (
-                                <div key={idx} className="p-2 rounded bg-[#0c1424] border border-[#162238] flex items-start justify-between gap-2">
-                                  <div className="space-y-0.5">
-                                    <div className="flex items-center gap-1.5 font-mono text-[10px]">
-                                      <span className="text-cyan-400 font-bold">[{log.action}]</span>
-                                      <span className="text-slate-300 font-semibold">{log.performed_by}</span>
+                                <div key={idx} className="p-3 rounded-lg bg-white border border-slate-200 flex items-start justify-between gap-3 shadow-2xs">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 font-mono text-xs">
+                                      <span className="text-blue-700 font-bold">[{log.action}]</span>
+                                      <span className="text-slate-800 font-semibold">{log.performed_by}</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-300">{log.notes}</p>
+                                    <p className="text-xs text-slate-600 leading-relaxed">{log.notes}</p>
                                   </div>
-                                  <span className="text-[9px] font-mono text-slate-400 whitespace-nowrap">
+                                  <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
                                     {new Date(log.timestamp).toLocaleString()}
                                   </span>
                                 </div>
                               ))
                             ) : (
-                              <div className="text-[11px] text-slate-400 font-mono">
+                              <div className="text-xs text-slate-500 font-mono py-2">
                                 System triggered alert logged on {new Date(alert.created_at).toLocaleString()}.
                               </div>
                             )}
@@ -808,25 +832,27 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
             {/* Alert Action Modal */}
             {selectedAlertForAction && (
-              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-                <div className="max-w-md w-full rounded-xl bg-[#0c1424] border border-[#1e2f4f] p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                    <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                      <ShieldAlert className="w-4 h-4 text-cyan-400" />
+              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="max-w-md w-full rounded-2xl bg-white border border-slate-200 p-6 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
                       <span>Execute Command Authority Action</span>
                     </h3>
-                    <button onClick={() => setSelectedAlertForAction(null)} className="text-slate-400 hover:text-white">
-                      <XCircle className="w-4 h-4" />
+                    <button onClick={() => setSelectedAlertForAction(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                      <XCircle className="w-5 h-5" />
                     </button>
                   </div>
 
-                  <div className="text-xs text-slate-300">
-                    <span className="font-semibold text-white">Target Hazard: </span>
+                  <div className="text-xs text-slate-600">
+                    <span className="font-bold text-slate-900">Target Hazard: </span>
                     <span>{selectedAlertForAction.title}</span>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                       Command Operational Notes / Dispatch Action:
                     </label>
                     <textarea
@@ -834,14 +860,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       onChange={(e) => setActionNotes(e.target.value)}
                       placeholder="Enter verification notes, field team dispatch orders, or perimeter resolution details..."
                       rows={3}
-                      className="w-full px-3 py-2 rounded bg-[#090f1b] border border-[#1c2a44] text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-cyan-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 transition-colors"
                     />
                   </div>
 
-                  <div className="pt-2 flex justify-end gap-2">
+                  <div className="pt-3 border-t border-slate-100 flex justify-end gap-2.5">
                     <button
                       onClick={() => setSelectedAlertForAction(null)}
-                      className="px-3 py-1.5 rounded bg-[#090f1b] hover:bg-[#111c30] border border-[#1c2a44] text-xs text-slate-300 cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 cursor-pointer transition-colors"
                     >
                       Cancel
                     </button>
@@ -850,18 +876,18 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       <button
                         onClick={() => handleExecuteAlertAction(selectedAlertForAction.id, "RESOLVE")}
                         disabled={actionLoadingId === `alert-${selectedAlertForAction.id}`}
-                        className="px-3 py-1.5 rounded bg-teal-600 hover:bg-teal-500 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
                       >
-                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <ShieldCheck className="w-4 h-4" />
                         <span>Confirm Resolution</span>
                       </button>
                     ) : (
                       <button
                         onClick={() => handleExecuteAlertAction(selectedAlertForAction.id, "ACKNOWLEDGE")}
                         disabled={actionLoadingId === `alert-${selectedAlertForAction.id}`}
-                        className="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
                       >
-                        <Check className="w-3.5 h-3.5" />
+                        <Check className="w-4 h-4" />
                         <span>Confirm Acknowledgment</span>
                       </button>
                     )}
@@ -876,13 +902,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         {/* TAB 3: PROVIDERS & INGESTION MONITORING     */}
         {/* ========================================== */}
         {activeTab === "providers" && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-[#182640] gap-2">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-3">
               <div>
-                <h2 className="text-xs font-semibold text-white">
+                <h2 className="text-sm font-bold text-slate-900">
                   Provider Status & Ingestion Telemetry
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Real-time status of NASA FIRMS API, OpenStreetMap cadastre, ESA WorldCover, and pipeline throughput.
                 </p>
               </div>
@@ -891,9 +917,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 <button
                   onClick={() => handleTestProvider("NASA_FIRMS")}
                   disabled={testingProvider}
-                  className="px-2.5 py-1 rounded bg-[#0f172a] hover:bg-[#15233e] border border-cyan-500/30 text-xs text-cyan-300 flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-semibold text-blue-700 flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
                 >
-                  <Zap className={`w-3.5 h-3.5 ${testingProvider ? "animate-spin text-cyan-400" : "text-cyan-400"}`} />
+                  <Zap className={`w-3.5 h-3.5 ${testingProvider ? "animate-spin text-blue-600" : "text-blue-600"}`} />
                   <span>Test FIRMS Connectivity</span>
                 </button>
               </div>
@@ -901,147 +927,156 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
             {/* Provider Test Result Display */}
             {providerTestResult && (
-              <div className="p-3 rounded-lg bg-[#0c1424] border border-cyan-500/40 text-xs space-y-1">
+              <div className="p-4 rounded-2xl bg-white border border-blue-200 shadow-2xs text-xs space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-cyan-300">Diagnostic Test Result: {providerTestResult.provider}</span>
-                  <button onClick={() => setProviderTestResult(null)} className="text-slate-400 hover:text-white">
-                    <XCircle className="w-3.5 h-3.5" />
+                  <span className="font-bold text-blue-700 flex items-center gap-1.5">
+                    <Activity className="w-4 h-4" />
+                    <span>Diagnostic Test Result: {providerTestResult.provider}</span>
+                  </span>
+                  <button onClick={() => setProviderTestResult(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                    <XCircle className="w-4 h-4" />
                   </button>
                 </div>
-                <pre className="p-2 rounded bg-[#070b14] font-mono text-[11px] text-slate-300 overflow-x-auto">
+                <pre className="p-3 rounded-xl bg-slate-50 font-mono text-[11px] text-slate-700 overflow-x-auto border border-slate-200">
                   {JSON.stringify(providerTestResult.result || providerTestResult, null, 2)}
                 </pre>
               </div>
             )}
 
             {/* Provider Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* NASA FIRMS Provider */}
-              <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-                <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                  <div className="flex items-center gap-2">
-                    <Satellite className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-xs font-semibold text-white">NASA FIRMS API</h3>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+                      <Satellite className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900">NASA FIRMS API</h3>
                   </div>
-                  <span className={`px-2 py-0.5 rounded font-mono text-[9px] ${
-                    isLive ? "bg-emerald-500/20 text-emerald-300" : "bg-teal-500/20 text-teal-300"
+                  <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold ${
+                    isLive ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-teal-50 text-teal-700 border border-teal-200"
                   }`}>
-                    {isLive ? "LIVE SATELLITE API" : "DEMO SAMPLE DATA"}
+                    {isLive ? "LIVE SATELLITE" : "CALIBRATED"}
                   </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Endpoint:</span>
-                    <span className="font-mono text-cyan-300">firms.modaps.eosdis.nasa.gov</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Endpoint:</span>
+                    <span className="font-mono text-blue-700 font-bold">firms.modaps.eosdis.nasa.gov</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Key Security:</span>
-                    <span className="font-mono text-emerald-400">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Key Security:</span>
+                    <span className="font-mono text-emerald-700 font-bold">
                       {adminConfig?.firms_key_configured ? "Configured Server-Side" : "Demo Mode Only"}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Supported Satellites:</span>
-                    <span className="font-mono text-slate-200">VIIRS (SNPP/NOAA-20), MODIS</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Supported Satellites:</span>
+                    <span className="font-mono text-slate-700 font-bold">VIIRS (SNPP/NOAA-20), MODIS</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Default BBox:</span>
-                    <span className="font-mono text-slate-300">68.0, 6.5, 97.5, 37.5 (India)</span>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500 font-medium">Default BBox:</span>
+                    <span className="font-mono text-slate-700 font-bold">68.0, 6.5, 97.5, 37.5 (India)</span>
                   </div>
                 </div>
               </div>
 
               {/* OpenStreetMap PostGIS Provider */}
-              <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-                <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-4 h-4 text-teal-400" />
-                    <h3 className="text-xs font-semibold text-white">OpenStreetMap Cadastre</h3>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600">
+                      <Database className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900">OpenStreetMap Cadastre</h3>
                   </div>
-                  <span className="px-2 py-0.5 rounded font-mono text-[9px] bg-emerald-500/20 text-emerald-300">
+                  <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     ONLINE
                   </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Infrastructure Layer:</span>
-                    <span className="font-mono text-teal-300">Refineries, Power Plants, Mines</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Infrastructure Layer:</span>
+                    <span className="font-mono text-teal-700 font-bold">Refineries, Power Plants, Mines</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Spatial Index:</span>
-                    <span className="font-mono text-emerald-400">PostGIS GIST Tree</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Spatial Index:</span>
+                    <span className="font-mono text-emerald-700 font-bold">PostGIS GIST Tree</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Industrial POIs Indexed:</span>
-                    <span className="font-mono text-slate-200">12 Primary Facilities</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Industrial POIs:</span>
+                    <span className="font-mono text-slate-700 font-bold">12 Primary Facilities</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Query Mode:</span>
-                    <span className="font-mono text-slate-300">Sub-millisecond Spatial Joins</span>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500 font-medium">Query Mode:</span>
+                    <span className="font-mono text-slate-700 font-bold">Spatial Joins (&lt;1ms)</span>
                   </div>
                 </div>
               </div>
 
               {/* ESA WorldCover LandCover Provider */}
-              <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-                <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-emerald-400" />
-                    <h3 className="text-xs font-semibold text-white">ESA WorldCover 10m</h3>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900">ESA WorldCover 10m</h3>
                   </div>
-                  <span className="px-2 py-0.5 rounded font-mono text-[9px] bg-emerald-500/20 text-emerald-300">
+                  <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     ONLINE
                   </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Resolution:</span>
-                    <span className="font-mono text-cyan-300">10-meter Ground Resolution</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Resolution:</span>
+                    <span className="font-mono text-blue-700 font-bold">10-meter Ground Grid</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Classifications:</span>
-                    <span className="font-mono text-slate-200">Cropland, Forest, Industrial, Built-up</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Classifications:</span>
+                    <span className="font-mono text-slate-700 font-bold">Cropland, Forest, Built-up</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Temporal Coverage:</span>
-                    <span className="font-mono text-slate-300">Annual Dynamic Benchmark</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Temporal Coverage:</span>
+                    <span className="font-mono text-slate-700 font-bold">Annual Dynamic Layer</span>
                   </div>
-                  <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">Context Engine:</span>
-                    <span className="font-mono text-emerald-400">Instant Vector Extraction</span>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500 font-medium">Context Engine:</span>
+                    <span className="font-mono text-emerald-700 font-bold">Instant Spatial Overlay</span>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Ingestion Pipeline Metrics */}
-            <div className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-3">
-              <h3 className="text-xs font-semibold text-white">Ingestion Pipeline Performance</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238]">
-                  <div className="text-slate-400 text-[11px]">Total Raw Ingested</div>
-                  <div className="text-lg font-mono font-bold text-white mt-1">
+            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+              <h3 className="text-sm font-bold text-slate-900">Ingestion Pipeline Performance</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-slate-500 font-medium text-xs">Total Raw Ingested</div>
+                  <div className="text-2xl font-mono font-bold text-slate-900 mt-1">
                     {overviewData?.ingestion_metrics?.total_ingested || 0}
                   </div>
                 </div>
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238]">
-                  <div className="text-slate-400 text-[11px]">Valid Cleaned Hotspots</div>
-                  <div className="text-lg font-mono font-bold text-emerald-400 mt-1">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-slate-500 font-medium text-xs">Valid Cleaned Hotspots</div>
+                  <div className="text-2xl font-mono font-bold text-emerald-700 mt-1">
                     {overviewData?.ingestion_metrics?.valid_hotspots || 0}
                   </div>
                 </div>
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238]">
-                  <div className="text-slate-400 text-[11px]">Rejected Bad Coordinates</div>
-                  <div className="text-lg font-mono font-bold text-slate-400 mt-1">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-slate-500 font-medium text-xs">Rejected Bad Coordinates</div>
+                  <div className="text-2xl font-mono font-bold text-slate-500 mt-1">
                     {overviewData?.ingestion_metrics?.rejected_duplicates || 0}
                   </div>
                 </div>
-                <div className="p-3 rounded bg-[#090f1b] border border-[#152238]">
-                  <div className="text-slate-400 text-[11px]">Enriched & Classified</div>
-                  <div className="text-lg font-mono font-bold text-cyan-400 mt-1">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <div className="text-slate-500 font-medium text-xs">Enriched &amp; Classified</div>
+                  <div className="text-2xl font-mono font-bold text-blue-700 mt-1">
                     {overviewData?.ingestion_metrics?.enriched_records || 0}
                   </div>
                 </div>
@@ -1054,70 +1089,67 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         {/* TAB 4: USER & ROLE ADMINISTRATION          */}
         {/* ========================================== */}
         {activeTab === "users" && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-[#182640] gap-2">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-3">
               <div>
-                <h2 className="text-xs font-semibold text-white">
-                  User Account & Role-Based Clearance Administration
+                <h2 className="text-sm font-bold text-slate-900">
+                  User Account &amp; Role-Based Clearance Administration
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Manage surveillance personnel, analysts, commanding officers, and role-based permissions.
                 </p>
               </div>
 
               <button
                 onClick={() => setShowAddUserModal(true)}
-                className="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
               >
-                <UserPlus className="w-3.5 h-3.5" />
+                <UserPlus className="w-4 h-4" />
                 <span>Add Officer / Analyst</span>
               </button>
             </div>
 
             {/* Users Table */}
-            <div className="overflow-x-auto rounded-lg border border-[#182640] bg-[#0c1424]">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#090f1b] text-slate-400 text-[11px] border-b border-[#182640]">
+                <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider text-[10px] font-bold border-b border-slate-200">
                   <tr>
-                    <th className="px-3.5 py-2.5">Personnel</th>
-                    <th className="px-3.5 py-2.5">Username / Email</th>
-                    <th className="px-3.5 py-2.5">Role & Clearance</th>
-                    <th className="px-3.5 py-2.5">Department</th>
-                    <th className="px-3.5 py-2.5">Sessions</th>
-                    <th className="px-3.5 py-2.5 text-right">Actions</th>
+                    <th className="px-4 py-3">Personnel</th>
+                    <th className="px-4 py-3">Username / Email</th>
+                    <th className="px-4 py-3">Role &amp; Clearance</th>
+                    <th className="px-4 py-3">Department</th>
+                    <th className="px-4 py-3">Sessions</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#182640]">
+                <tbody className="divide-y divide-slate-100">
                   {usersList.map((u) => {
-                    const isChief = u.role === "CHIEF_SURVEILLANCE_OFFICER" || u.role === "ADMIN" || u.role === "admin";
-                    const isAnalystRole = u.role === "ANALYST" || u.role === "SENIOR_GIS_ANALYST";
-
                     return (
-                      <tr key={u.id} className="hover:bg-[#0f1a2e] transition-colors">
-                        <td className="px-3.5 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold text-[10px]">
+                      <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 font-bold text-xs shadow-2xs">
                               {u.name.charAt(0)}
                             </div>
                             <div>
-                              <div className="font-semibold text-white">{u.name}</div>
-                              <div className="text-[10px] text-cyan-400 font-mono">{u.badge_number || "SYS-001"}</div>
+                              <div className="font-bold text-slate-900">{u.name}</div>
+                              <div className="text-[10px] text-blue-700 font-mono font-medium">{u.badge_number || "SYS-001"}</div>
                             </div>
                           </div>
                         </td>
 
-                        <td className="px-3.5 py-2.5">
-                          <div className="text-slate-200 font-mono">{u.username}</div>
-                          <div className="text-[10px] text-slate-400">{u.email}</div>
+                        <td className="px-4 py-3.5">
+                          <div className="text-slate-800 font-mono font-medium">{u.username}</div>
+                          <div className="text-xs text-slate-500">{u.email}</div>
                         </td>
 
-                        <td className="px-3.5 py-2.5">
+                        <td className="px-4 py-3.5">
                           <div className="flex items-center gap-1.5">
                             <select
                               value={u.role}
                               onChange={(e) => handleUpdateRole(u.id, e.target.value)}
                               disabled={actionLoadingId === `user-role-${u.id}`}
-                              className="px-2 py-1 rounded bg-[#090f1b] border border-[#1c2a44] text-xs text-slate-200 focus:outline-hidden focus:border-cyan-500 cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:bg-white focus:border-blue-500 cursor-pointer transition-colors"
                             >
                               <option value="ADMIN">ADMIN (Level 4 Restricted)</option>
                               <option value="CHIEF_SURVEILLANCE_OFFICER">Chief Surveillance Officer (L4)</option>
@@ -1128,22 +1160,22 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           </div>
                         </td>
 
-                        <td className="px-3.5 py-2.5 text-slate-300">
+                        <td className="px-4 py-3.5 text-slate-600 font-medium">
                           {u.department || "Surveillance Command"}
                         </td>
 
-                        <td className="px-3.5 py-2.5 font-mono text-cyan-300">
+                        <td className="px-4 py-3.5 font-mono text-blue-700 font-bold">
                           {u.session_count || 0} active
                         </td>
 
-                        <td className="px-3.5 py-2.5 text-right">
+                        <td className="px-4 py-3.5 text-right">
                           <button
                             onClick={() => handleDeleteUser(u.id, u.name)}
                             disabled={actionLoadingId === `delete-${u.id}` || u.username === "admin" || u.username === "ntro.officer"}
                             title={u.username === "admin" ? "Default admin account cannot be deleted" : "Revoke credentials"}
-                            className="p-1.5 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-30 cursor-pointer"
+                            className="p-2 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors disabled:opacity-30 cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>
@@ -1155,73 +1187,75 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
             {/* Add User Modal */}
             {showAddUserModal && (
-              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-                <div className="max-w-md w-full rounded-xl bg-[#0c1424] border border-[#1e2f4f] p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-[#182640] pb-2">
-                    <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                      <UserPlus className="w-4 h-4 text-cyan-400" />
+              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="max-w-md w-full rounded-2xl bg-white border border-slate-200 p-6 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                        <UserPlus className="w-4 h-4" />
+                      </div>
                       <span>Register New Personnel Account</span>
                     </h3>
-                    <button onClick={() => setShowAddUserModal(false)} className="text-slate-400 hover:text-white">
-                      <XCircle className="w-4 h-4" />
+                    <button onClick={() => setShowAddUserModal(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                      <XCircle className="w-5 h-5" />
                     </button>
                   </div>
 
-                  <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
+                  <form onSubmit={handleCreateUser} className="space-y-3.5 text-xs">
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Full Name</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
                       <input
                         type="text"
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="e.g. Dr. Rajesh Khanna"
                         required
-                        className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Username</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Username</label>
                       <input
                         type="text"
                         value={newUsername}
                         onChange={(e) => setNewUsername(e.target.value)}
                         placeholder="e.g. rajesh.gis"
                         required
-                        className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Official Email Address</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Official Email Address</label>
                       <input
                         type="email"
                         value={newEmail}
                         onChange={(e) => setNewEmail(e.target.value)}
                         placeholder="e.g. rajesh@thermoguard.gov.in"
                         required
-                        className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Initial Password</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Initial Password</label>
                       <input
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         placeholder="••••••••••••"
                         required
-                        className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Clearance Role</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Clearance Role</label>
                       <select
                         value={newRole}
                         onChange={(e) => setNewRole(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 transition-colors cursor-pointer"
                       >
                         <option value="ANALYST">GIS Intelligence Analyst (Level 2)</option>
                         <option value="SENIOR_GIS_ANALYST">Senior GIS Analyst (Level 3)</option>
@@ -1232,30 +1266,30 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Department / Division</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Department / Division</label>
                       <input
                         type="text"
                         value={newDepartment}
                         onChange={(e) => setNewDepartment(e.target.value)}
                         placeholder="e.g. Thermal Satellite Division"
-                        className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 transition-colors"
                       />
                     </div>
 
-                    <div className="pt-2 flex justify-end gap-2">
+                    <div className="pt-3 border-t border-slate-100 flex justify-end gap-2.5">
                       <button
                         type="button"
                         onClick={() => setShowAddUserModal(false)}
-                        className="px-3 py-1.5 rounded bg-[#090f1b] hover:bg-[#111c30] border border-[#1c2a44] text-xs text-slate-300 cursor-pointer"
+                        className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 cursor-pointer transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={actionLoadingId === "create-user"}
-                        className="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
                       >
-                        <UserPlus className="w-3.5 h-3.5" />
+                        <UserPlus className="w-4 h-4" />
                         <span>Create Account</span>
                       </button>
                     </div>
@@ -1270,67 +1304,67 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         {/* TAB 5: ACTIVE SESSIONS & SECURITY          */}
         {/* ========================================== */}
         {activeTab === "sessions" && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-[#182640] gap-2">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-3">
               <div>
-                <h2 className="text-xs font-semibold text-white">
-                  Active Authentication Sessions & Token Invalidation
+                <h2 className="text-sm font-bold text-slate-900">
+                  Active Authentication Sessions &amp; Token Invalidation
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Real-time inspection of active JWT tokens, login origin timestamps, and emergency session revocation.
                 </p>
               </div>
 
-              <div className="text-xs font-mono text-cyan-300">
+              <div className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                 Active Sessions: {sessionsList.length}
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-[#182640] bg-[#0c1424]">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#090f1b] text-slate-400 text-[11px] border-b border-[#182640]">
+                <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider text-[10px] font-bold border-b border-slate-200">
                   <tr>
-                    <th className="px-3.5 py-2.5">User Profile</th>
-                    <th className="px-3.5 py-2.5">Clearance Level</th>
-                    <th className="px-3.5 py-2.5">Token Fingerprint</th>
-                    <th className="px-3.5 py-2.5">Login Time</th>
-                    <th className="px-3.5 py-2.5">Session Expiry</th>
-                    <th className="px-3.5 py-2.5 text-right">Revocation</th>
+                    <th className="px-4 py-3">User Profile</th>
+                    <th className="px-4 py-3">Clearance Level</th>
+                    <th className="px-4 py-3">Token Fingerprint</th>
+                    <th className="px-4 py-3">Login Time</th>
+                    <th className="px-4 py-3">Session Expiry</th>
+                    <th className="px-4 py-3 text-right">Revocation</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#182640]">
+                <tbody className="divide-y divide-slate-100">
                   {sessionsList.map((s) => (
-                    <tr key={s.token} className="hover:bg-[#0f1a2e] transition-colors">
-                      <td className="px-3.5 py-2.5">
-                        <div className="font-semibold text-white">{s.name || s.username}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">{s.email}</div>
+                    <tr key={s.token} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-4 py-3.5">
+                        <div className="font-bold text-slate-900">{s.name || s.username}</div>
+                        <div className="text-xs text-slate-500 font-mono">{s.email}</div>
                       </td>
 
-                      <td className="px-3.5 py-2.5">
-                        <span className="px-2 py-0.5 rounded font-mono text-[9px] bg-slate-800 text-cyan-300 border border-[#1e2f4f]">
+                      <td className="px-4 py-3.5">
+                        <span className="px-2.5 py-0.5 rounded font-mono text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                           {s.role}
                         </span>
                       </td>
 
-                      <td className="px-3.5 py-2.5 font-mono text-[11px] text-slate-400">
+                      <td className="px-4 py-3.5 font-mono text-xs text-slate-500">
                         {s.token.substring(0, 16)}...
                       </td>
 
-                      <td className="px-3.5 py-2.5 text-[11px] text-slate-300 font-mono">
+                      <td className="px-4 py-3.5 text-xs text-slate-600 font-mono">
                         {new Date(s.created_at).toLocaleString()}
                       </td>
 
-                      <td className="px-3.5 py-2.5 text-[11px] text-slate-400 font-mono">
+                      <td className="px-4 py-3.5 text-xs text-slate-500 font-mono">
                         {new Date(s.expires_at).toLocaleString()}
                       </td>
 
-                      <td className="px-3.5 py-2.5 text-right">
+                      <td className="px-4 py-3.5 text-right">
                         <button
                           onClick={() => handleRevokeSession(s.token)}
                           disabled={actionLoadingId === `session-${s.token.substring(0, 8)}`}
-                          className="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer ml-auto"
+                          className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ml-auto shadow-2xs disabled:opacity-50"
                         >
-                          <Power className="w-3 h-3" />
+                          <Power className="w-3.5 h-3.5" />
                           <span>Revoke</span>
                         </button>
                       </td>
@@ -1346,102 +1380,102 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         {/* TAB 6: SYSTEM PARAMETERS & CONFIG          */}
         {/* ========================================== */}
         {activeTab === "config" && (
-          <div className="space-y-4 max-w-2xl">
-            <div className="pb-2 border-b border-[#182640]">
-              <h2 className="text-xs font-semibold text-white">
-                Administrative System Parameters & Thresholds
+          <div className="space-y-6 max-w-2xl">
+            <div className="pb-3 border-b border-slate-200">
+              <h2 className="text-sm font-bold text-slate-900">
+                Administrative System Parameters &amp; Thresholds
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Configure operational thresholds for Fire Radiative Power (FRP), industrial proximity radius, and auto-sync intervals.
               </p>
             </div>
 
-            <form onSubmit={handleSaveConfig} className="p-4 rounded-lg bg-[#0c1424] border border-[#182640] space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleSaveConfig} className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-6 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Critical FRP Threshold (MW)
                   </label>
                   <input
                     type="number"
                     value={configForm.critical_frp_threshold ?? 100}
                     onChange={(e) => setConfigForm({ ...configForm, critical_frp_threshold: Number(e.target.value) })}
-                    className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Surges above this value trigger Critical Tier-3 alert.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Surges above this value trigger Critical Tier-3 alert.</p>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     High FRP Threshold (MW)
                   </label>
                   <input
                     type="number"
                     value={configForm.high_frp_threshold ?? 45}
                     onChange={(e) => setConfigForm({ ...configForm, high_frp_threshold: Number(e.target.value) })}
-                    className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Surges above this trigger High priority dispatch.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Surges above this trigger High priority dispatch.</p>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Industrial Proximity Radius (Meters)
                   </label>
                   <input
                     type="number"
                     value={configForm.industrial_proximity_radius_m ?? 1000}
                     onChange={(e) => setConfigForm({ ...configForm, industrial_proximity_radius_m: Number(e.target.value) })}
-                    className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Max spatial distance to associate hotspot with facility.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Max spatial distance to associate hotspot with facility.</p>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Minimum FIRMS Confidence Filter (%)
                   </label>
                   <input
                     type="number"
                     value={configForm.min_confidence_filter ?? 50}
                     onChange={(e) => setConfigForm({ ...configForm, min_confidence_filter: Number(e.target.value) })}
-                    className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Observations below this confidence are filtered out.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Observations below this confidence are filtered out.</p>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     FIRMS Auto-Sync Interval (Minutes)
                   </label>
                   <input
                     type="number"
                     value={configForm.sync_interval_mins ?? 15}
                     onChange={(e) => setConfigForm({ ...configForm, sync_interval_mins: Number(e.target.value) })}
-                    className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Default FIRMS Bounding Box (minLon, minLat, maxLon, maxLat)
                   </label>
                   <input
                     type="text"
                     value={configForm.firms_default_bbox ?? "68.0,6.5,97.5,37.5"}
                     onChange={(e) => setConfigForm({ ...configForm, firms_default_bbox: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded bg-[#090f1b] border border-[#1c2a44] text-white focus:outline-hidden focus:border-cyan-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 font-mono transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#182640] flex justify-end">
+              <div className="pt-4 border-t border-slate-100 flex justify-end">
                 <button
                   type="submit"
                   disabled={actionLoadingId === "save-config"}
-                  className="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm transition-colors"
                 >
-                  <Sliders className="w-3.5 h-3.5" />
+                  <Sliders className="w-4 h-4" />
                   <span>Save Configuration</span>
                 </button>
               </div>
