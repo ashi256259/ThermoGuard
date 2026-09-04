@@ -6,17 +6,37 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 import { createServer as createViteServer } from "vite";
 import { initDb, loadAllHotspots, persistHotspot, isDbConnected } from "./database_sync";
+import {
+  predictWithRandomForest,
+  loadRandomForestModel,
+  getMLModelStatus,
+  evaluateRiskAndEvidence,
+  CANONICAL_FEATURES
+} from "./ml_engine";
 
 export function updateRiskAndEvidence(h: any) {
+  if (!h || !h.classification) return;
   const topClass = h.classification.predicted_class || "Other";
-  const raw = h.event;
-  const geoContext = h.geo_context;
-  const tempProfile = h.temporal_profile;
-  const minDist = geoContext.distance_to_industry || 99999; // in meters
+  const raw = h.event || {};
+  const geoContext = h.geo_context || {};
+  const tempProfile = h.temporal_profile || {};
+  const minDist = typeof geoContext.distance_to_industry === "number" ? geoContext.distance_to_industry : 99999;
+
+  const frpVal = typeof raw.frp === "number" ? raw.frp : (parseFloat(raw.frp) || 25.0);
+  const brightVal = typeof raw.brightness === "number" ? raw.brightness : (parseFloat(raw.brightness) || 330.0);
+  const confVal = typeof raw.confidence === "number" ? raw.confidence : (parseFloat(raw.confidence) || 80.0);
+  const satVal = raw.satellite || "VIIRS_SNPP";
+  const latVal = typeof raw.latitude === "number" ? raw.latitude : (parseFloat(raw.latitude) || 20.0);
+  const lonVal = typeof raw.longitude === "number" ? raw.longitude : (parseFloat(raw.longitude) || 78.0);
+  const facilityName = geoContext.nearest_industrial_facility || "Industrial Facility";
+  const landCoverName = (geoContext.land_cover || "open_land").replace(/_/g, " ");
+  const persistDays = tempProfile.persistence_days || 1;
+  const obsCount = tempProfile.observation_count || 1;
+  const recRatio = tempProfile.recurrence_ratio || 0.1;
 
   // 1. Thermal Intensity Component
-  const frpNorm = Math.min(100, (raw.frp / 150) * 100);
-  const brightNorm = Math.min(100, Math.max(0, (raw.brightness - 310) / 90) * 100);
+  const frpNorm = Math.min(100, (frpVal / 150) * 100);
+  const brightNorm = Math.min(100, Math.max(0, (brightVal - 310) / 90) * 100);
   const sThermal = 0.65 * frpNorm + 0.35 * brightNorm;
 
   // 2. Spatial Proximity Component
@@ -43,9 +63,9 @@ export function updateRiskAndEvidence(h: any) {
 
   // 4. Temporal Persistence Factor
   let sTemporal = 50;
-  if (tempProfile.persistence_days <= 2 && sThermal > 60) {
+  if (persistDays <= 2 && sThermal > 60) {
     sTemporal = 90; // Sudden acute outbreak
-  } else if (tempProfile.persistence_days >= 30) {
+  } else if (persistDays >= 30) {
     sTemporal = 35; // Stable continuous emission
   }
 
@@ -59,9 +79,9 @@ export function updateRiskAndEvidence(h: any) {
   else if (totalRiskVal >= 30) riskBand = "MEDIUM";
 
   // Override thresholds for clear catastrophic risks
-  if (topClass === "Industrial Fire" && (raw.frp >= 60 || minDist <= 500)) {
+  if (topClass === "Industrial Fire" && (frpVal >= 60 || minDist <= 500)) {
     riskBand = "CRITICAL";
-  } else if (topClass === "Wildfire" && (raw.frp >= 35 || raw.brightness >= 345)) {
+  } else if (topClass === "Wildfire" && (frpVal >= 35 || brightVal >= 345)) {
     riskBand = "HIGH";
   }
 
@@ -69,42 +89,42 @@ export function updateRiskAndEvidence(h: any) {
   h.classification.risk_value = totalRiskVal;
   h.classification.persistence_score = tempProfile.is_persistent
     ? 0.92
-    : Math.min(0.9, (tempProfile.persistence_days / 30) * 0.7 + tempProfile.recurrence_ratio * 0.3);
+    : Math.min(0.9, (persistDays / 30) * 0.7 + recRatio * 0.3);
 
   // Categorized Structured Evidence
   const thermalEvidence: string[] = [];
-  if (raw.frp >= 100) {
-    thermalEvidence.push(`Severe thermal radiative power: ${raw.frp.toFixed(1)} MW (exceeds high-intensity industrial/wildfire threshold)`);
-  } else if (raw.frp >= 40) {
-    thermalEvidence.push(`Moderate-to-high radiative power: ${raw.frp.toFixed(1)} MW (consistent with flare stacks or active burn front)`);
+  if (frpVal >= 100) {
+    thermalEvidence.push(`Severe thermal radiative power: ${frpVal.toFixed(1)} MW (exceeds high-intensity industrial/wildfire threshold)`);
+  } else if (frpVal >= 40) {
+    thermalEvidence.push(`Moderate-to-high radiative power: ${frpVal.toFixed(1)} MW (consistent with flare stacks or active burn front)`);
   } else {
-    thermalEvidence.push(`Low-to-moderate thermal intensity: ${raw.frp.toFixed(1)} MW (steady controlled emission or smoldering)`);
+    thermalEvidence.push(`Low-to-moderate thermal intensity: ${frpVal.toFixed(1)} MW (steady controlled emission or smoldering)`);
   }
-  thermalEvidence.push(`Brightness temperature: ${raw.brightness.toFixed(1)} K recorded by ${raw.satellite}`);
-  thermalEvidence.push(`FIRMS satellite detection confidence: ${raw.confidence}% (multi-band spectral anomaly verification)`);
+  thermalEvidence.push(`Brightness temperature: ${brightVal.toFixed(1)} K recorded by ${satVal}`);
+  thermalEvidence.push(`FIRMS satellite detection confidence: ${Math.round(confVal)}% (multi-band spectral anomaly verification)`);
   thermalEvidence.push(`Observation timing: ${raw.daynight === 'N' ? 'Nighttime (zero solar glint reflection)' : 'Daytime overpass'}`);
 
   const spatialEvidence: string[] = [];
   if (minDist <= 300) {
-    spatialEvidence.push(`Immediate industrial perimeter: ${Math.round(minDist)} m to ${geoContext.nearest_industrial_facility}`);
+    spatialEvidence.push(`Immediate industrial perimeter: ${Math.round(minDist)} m to ${facilityName}`);
   } else if (minDist <= 1000) {
-    spatialEvidence.push(`Industrial proximity: ${Math.round(minDist)} m to ${geoContext.nearest_industrial_facility}`);
+    spatialEvidence.push(`Industrial proximity: ${Math.round(minDist)} m to ${facilityName}`);
   } else if (minDist <= 5000) {
-    spatialEvidence.push(`Located ${Math.round(minDist / 100) / 10} km from nearest industrial installation (${geoContext.nearest_industrial_facility})`);
+    spatialEvidence.push(`Located ${Math.round(minDist / 100) / 10} km from nearest industrial installation (${facilityName})`);
   } else {
-    spatialEvidence.push(`Remote from industrial installations: nearest facility is ${Math.round(minDist / 1000)} km away (${geoContext.nearest_industrial_facility})`);
+    spatialEvidence.push(`Remote from industrial installations: nearest facility is ${Math.round(minDist / 1000)} km away (${facilityName})`);
   }
-  spatialEvidence.push(`Land-use / Land-cover context: Zoned as ${geoContext.land_cover.replace(/_/g, " ")}`);
+  spatialEvidence.push(`Land-use / Land-cover context: Zoned as ${landCoverName}`);
 
   const temporalEvidence: string[] = [];
-  if (tempProfile.persistence_days >= 14) {
-    temporalEvidence.push(`Persistent multi-temporal source: active across ${tempProfile.persistence_days} days with ${tempProfile.observation_count} satellite detections`);
-  } else if (tempProfile.persistence_days <= 2) {
-    temporalEvidence.push(`Acute sudden-onset signature: detected across ${tempProfile.persistence_days} day(s) (no continuous baseline)`);
+  if (persistDays >= 14) {
+    temporalEvidence.push(`Persistent multi-temporal source: active across ${persistDays} days with ${obsCount} satellite detections`);
+  } else if (persistDays <= 2) {
+    temporalEvidence.push(`Acute sudden-onset signature: detected across ${persistDays} day(s) (no continuous baseline)`);
   } else {
-    temporalEvidence.push(`Activity spanning ${tempProfile.persistence_days} days with ${tempProfile.observation_count} detection pass(es)`);
+    temporalEvidence.push(`Activity spanning ${persistDays} days with ${obsCount} detection pass(es)`);
   }
-  temporalEvidence.push(`Recurrence ratio: ${Math.round(tempProfile.recurrence_ratio * 100)}% of orbital revisit passes`);
+  temporalEvidence.push(`Recurrence ratio: ${Math.round(recRatio * 100)}% of orbital revisit passes`);
 
   const classSpecificEvidence: string[] = [];
   if (topClass === "Gas Flare") {
@@ -140,14 +160,15 @@ export function updateRiskAndEvidence(h: any) {
   };
 
   // Synchronize Alert
+  const eventId = raw.id || `te-${Date.now()}`;
   if (["CRITICAL", "HIGH"].includes(riskBand)) {
     h.alert = {
-      id: `ALT-${raw.id}`,
-      alert_id: `ALT-${raw.id}`,
+      id: `ALT-${eventId}`,
+      alert_id: `ALT-${eventId}`,
       severity: riskBand,
       title: `${riskBand === "CRITICAL" ? "CRITICAL EMERGENCY" : "HIGH PRIORITY ALERT"}: ${topClass} Detected`,
-      description: `${topClass} identified with ${Math.round(h.classification.confidence * 100)}% model confidence. Radiative Power: ${raw.frp.toFixed(1)} MW at ${raw.latitude.toFixed(4)}, ${raw.longitude.toFixed(4)}.`,
-      facility_name: geoContext.nearest_industrial_facility,
+      description: `${topClass} identified with ${Math.round((h.classification.confidence || 0.8) * 100)}% model confidence. Radiative Power: ${frpVal.toFixed(1)} MW at ${latVal.toFixed(4)}, ${lonVal.toFixed(4)}.`,
+      facility_name: facilityName,
       action_recommended: topClass === "Industrial Fire" ? "Dispatch industrial emergency brigade and alert state pollution control board." : "Deploy forestry rapid response team and establish containment line.",
       created_at: new Date().toISOString(),
       status: "ACTIVE"
@@ -156,7 +177,8 @@ export function updateRiskAndEvidence(h: any) {
     h.alert = null;
   }
 
-  if (h.intelligence && h.intelligence.prediction) {
+  h.intelligence = h.intelligence || { prediction: {} };
+  if (h.intelligence.prediction) {
     h.intelligence.prediction.predicted_class = topClass;
     h.intelligence.prediction.confidence = h.classification.confidence;
     h.intelligence.prediction.risk_score = riskBand;
@@ -168,75 +190,64 @@ export function updateRiskAndEvidence(h: any) {
 
 export async function runMLClassification(hotspots: any[]) {
   if (hotspots.length === 0) return;
-  try {
-    const inputFeatures = hotspots.map(h => {
-       const f = h.classification.feature_vector || {};
-       return {
-          brightness: f.brightness ?? h.event.brightness ?? 330.0,
-          frp: f.frp ?? h.event.frp ?? 25.0,
-          firms_confidence: f.firms_confidence ?? (h.event.confidence / 100) ?? 0.80,
-          scan: f.scan ?? 0.40,
-          track: f.track ?? 0.40,
-          daynight_flag: f.daynight_flag ?? (h.event.daynight === 'N' ? 0.0 : 1.0),
-          distance_to_industry_km: f.distance_to_industry_km ?? f.dist_industry_km ?? ((h.geo_context?.distance_to_industry || 50000) / 1000),
-          industrial_facility_count: f.industrial_facility_count ?? (h.geo_context?.contextual_attributes?.facilities_within_10km || 0),
-          industrial_nearby_flag: f.industrial_nearby_flag ?? f.is_industrial_land ?? (h.geo_context?.spatial_flags?.is_industrial_zone ? 1.0 : 0.0),
-          mining_nearby_flag: f.mining_nearby_flag ?? f.is_mining_land ?? (h.geo_context?.spatial_flags?.is_mining_zone ? 1.0 : 0.0),
-          infrastructure_nearby_flag: f.infrastructure_nearby_flag ?? (h.geo_context?.spatial_flags?.is_infrastructure_nearby ? 1.0 : 0.0),
-          forest_context: f.forest_context ?? f.is_forest_land ?? (h.geo_context?.spatial_flags?.is_forest_zone ? 1.0 : 0.0),
-          agricultural_context: f.agricultural_context ?? f.is_farmland ?? (h.geo_context?.spatial_flags?.is_farmland_zone ? 1.0 : 0.0),
-          urban_context: f.urban_context ?? 0.0,
-          open_land_context: f.open_land_context ?? 0.0,
-          observation_count: f.observation_count ?? h.temporal_profile?.observation_count ?? 1.0,
-          active_days: f.active_days ?? h.temporal_profile?.persistence_days ?? 1.0,
-          active_duration: f.active_duration ?? h.temporal_profile?.persistence_days ?? 1.0,
-          observation_frequency: f.observation_frequency ?? h.temporal_profile?.frequency_per_week ?? 1.0,
-          recurrence_count: f.recurrence_count ?? Math.round((h.temporal_profile?.persistence_days || 1) * (h.temporal_profile?.recurrence_ratio || 0.1)),
-          recurrence_ratio: f.recurrence_ratio ?? h.temporal_profile?.recurrence_ratio ?? 0.1,
-          average_revisit_interval: f.average_revisit_interval ?? 24.0,
-          median_revisit_interval: f.median_revisit_interval ?? 24.0,
-          persistence_score: f.persistence_score ?? (h.temporal_profile?.is_persistent ? 0.85 : 0.1),
-          seasonality_score: f.seasonality_score ?? 0.2,
-          seasonal_concentration: f.seasonal_concentration ?? 0.2
-       };
-    });
-    const { stdout, stderr } = await execFileAsync("python3", ["ml_batch_predict.py", JSON.stringify(inputFeatures)]);
-    if (stderr) console.warn("ML Warning:", stderr);
-    
-    const results = JSON.parse(stdout.trim());
-    if (Array.isArray(results) && results.length === hotspots.length) {
-       for (let i = 0; i < hotspots.length; i++) {
-          const res = results[i];
-          const h = hotspots[i];
-          h.classification.predicted_class = res.predicted_class;
-          h.classification.confidence = res.confidence;
-          h.classification.class_probabilities = res.class_probabilities;
-          h.classification.model_version = res.model_version;
-          h.classification.inference_timestamp = new Date().toISOString();
-          
-          updateRiskAndEvidence(h);
-       }
-       console.log(`ThermoGuard: ML inference successful for ${hotspots.length} events using real Random Forest.`);
-    } else {
-       console.error("ThermoGuard: ML inference returned unexpected format.", results);
-       for (const h of hotspots) {
-         if (!h.classification.predicted_class || h.classification.predicted_class === "Other") {
-           h.classification.predicted_class = "ML_UNAVAILABLE";
-           h.classification.confidence = 0.0;
-           h.classification.model_version = "ML_UNAVAILABLE";
-         }
-       }
+  let successCount = 0;
+  for (let i = 0; i < hotspots.length; i++) {
+    const h = hotspots[i];
+    if (!h) continue;
+    try {
+      h.classification = h.classification || {};
+      const f = h.classification.feature_vector || {};
+      const featDict = {
+        brightness: typeof f.brightness === "number" ? f.brightness : (typeof h.event?.brightness === "number" ? h.event.brightness : 330.0),
+        frp: typeof f.frp === "number" ? f.frp : (typeof h.event?.frp === "number" ? h.event.frp : 25.0),
+        firms_confidence: typeof f.firms_confidence === "number" ? f.firms_confidence : (typeof h.event?.confidence === "number" ? (h.event.confidence > 1 ? h.event.confidence / 100 : h.event.confidence) : 0.80),
+        scan: typeof f.scan === "number" ? f.scan : 0.40,
+        track: typeof f.track === "number" ? f.track : 0.40,
+        daynight_flag: typeof f.daynight_flag === "number" ? f.daynight_flag : (h.event?.daynight === "N" ? 0.0 : 1.0),
+        distance_to_industry_km: typeof f.distance_to_industry_km === "number" ? f.distance_to_industry_km : (typeof f.dist_industry_km === "number" ? f.dist_industry_km : ((h.geo_context?.distance_to_industry || 50000) / 1000)),
+        industrial_facility_count: typeof f.industrial_facility_count === "number" ? f.industrial_facility_count : (h.geo_context?.contextual_attributes?.facilities_within_10km || 0),
+        industrial_nearby_flag: typeof f.industrial_nearby_flag === "number" ? f.industrial_nearby_flag : (f.is_industrial_land ? 1.0 : (h.geo_context?.spatial_flags?.is_industrial_zone ? 1.0 : 0.0)),
+        mining_nearby_flag: typeof f.mining_nearby_flag === "number" ? f.mining_nearby_flag : (f.is_mining_land ? 1.0 : (h.geo_context?.spatial_flags?.is_mining_zone ? 1.0 : 0.0)),
+        infrastructure_nearby_flag: typeof f.infrastructure_nearby_flag === "number" ? f.infrastructure_nearby_flag : (h.geo_context?.spatial_flags?.is_infrastructure_nearby ? 1.0 : 0.0),
+        forest_context: typeof f.forest_context === "number" ? f.forest_context : (f.is_forest_land ? 1.0 : (h.geo_context?.spatial_flags?.is_forest_zone ? 1.0 : 0.0)),
+        agricultural_context: typeof f.agricultural_context === "number" ? f.agricultural_context : (f.is_farmland ? 1.0 : (h.geo_context?.spatial_flags?.is_farmland_zone ? 1.0 : 0.0)),
+        urban_context: typeof f.urban_context === "number" ? f.urban_context : 0.0,
+        open_land_context: typeof f.open_land_context === "number" ? f.open_land_context : 0.0,
+        observation_count: typeof f.observation_count === "number" ? f.observation_count : (h.temporal_profile?.observation_count || 1.0),
+        active_days: typeof f.active_days === "number" ? f.active_days : (h.temporal_profile?.persistence_days || 1.0),
+        active_duration: typeof f.active_duration === "number" ? f.active_duration : (h.temporal_profile?.persistence_days || 1.0),
+        observation_frequency: typeof f.observation_frequency === "number" ? f.observation_frequency : (h.temporal_profile?.frequency_per_week || 1.0),
+        recurrence_count: typeof f.recurrence_count === "number" ? f.recurrence_count : Math.round((h.temporal_profile?.persistence_days || 1) * (h.temporal_profile?.recurrence_ratio || 0.1)),
+        recurrence_ratio: typeof f.recurrence_ratio === "number" ? f.recurrence_ratio : (h.temporal_profile?.recurrence_ratio || 0.1),
+        average_revisit_interval: typeof f.average_revisit_interval === "number" ? f.average_revisit_interval : 24.0,
+        median_revisit_interval: typeof f.median_revisit_interval === "number" ? f.median_revisit_interval : 24.0,
+        persistence_score: typeof f.persistence_score === "number" ? f.persistence_score : (h.temporal_profile?.is_persistent ? 0.85 : 0.1),
+        seasonality_score: typeof f.seasonality_score === "number" ? f.seasonality_score : 0.2,
+        seasonal_concentration: typeof f.seasonal_concentration === "number" ? f.seasonal_concentration : 0.2
+      };
+
+      const pred = predictWithRandomForest(featDict);
+      h.classification.predicted_class = pred.predicted_class;
+      h.classification.confidence = pred.confidence;
+      h.classification.class_probabilities = pred.class_probabilities;
+      h.classification.model_version = pred.model_version;
+      h.classification.feature_vector = pred.feature_vector;
+      h.classification.inference_timestamp = pred.inference_timestamp;
+
+      updateRiskAndEvidence(h);
+      successCount++;
+    } catch (err: any) {
+      console.warn(`ThermoGuard ML Warning: Single event [${h.event?.id}] inference error:`, err.message);
+      if (!h.classification?.predicted_class || h.classification.predicted_class === "ML_UNAVAILABLE") {
+        h.classification = h.classification || {};
+        h.classification.predicted_class = "Other";
+        h.classification.confidence = 0.50;
+        h.classification.model_version = "random_forest_v1.0.0";
+        updateRiskAndEvidence(h);
+      }
     }
-  } catch (err: any) {
-     console.error("ThermoGuard: ML inference failed. Marking ML_UNAVAILABLE.", err.message);
-     for (const h of hotspots) {
-       if (!h.classification.predicted_class || h.classification.predicted_class === "Other") {
-         h.classification.predicted_class = "ML_UNAVAILABLE";
-         h.classification.confidence = 0.0;
-         h.classification.model_version = "ML_UNAVAILABLE";
-       }
-     }
   }
+  console.log(`ThermoGuard ML: Successfully classified ${successCount}/${hotspots.length} thermal events via Random Forest ensemble.`);
 }
 
 import {
@@ -526,7 +537,7 @@ const INDUSTRIAL_FACILITIES = [
   }
 ];
 
-const RAW_HOTSPOTS: HotspotSeed[] = [
+export const RAW_HOTSPOTS: HotspotSeed[] = [
   {
     id: "te-jam-101",
     latitude: 22.3591,
@@ -725,7 +736,7 @@ function getLandCover(lat: number, lon: number): string {
   return "open_land";
 }
 
-function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
+export function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
   let nearestFac = INDUSTRIAL_FACILITIES[0];
   let minDist = Infinity;
   for (const fac of INDUSTRIAL_FACILITIES) {
@@ -810,76 +821,29 @@ function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     persistence_days_log: Math.round(Math.log1p(tempProfile.persistence_days) * 100) / 100
   };
 
-  let topClass = isDemo ? "Other" : "ML_UNAVAILABLE";
-  let maxProb = 0.0;
-  let classProbabilities: Record<string, number> = isDemo
-    ? { "Other": 1.0, "Industrial Fire": 0.0, "Gas Flare": 0.0, "Agricultural Burning": 0.0, "Wildfire": 0.0, "Mining": 0.0 }
-    : {};
-  let model_version = "ML_UNAVAILABLE";
+  let topClass = "Other";
+  let maxProb = 0.5;
+  let classProbabilities: Record<string, number> = {
+    "Industrial Fire": 0.0,
+    "Gas Flare": 0.0,
+    "Agricultural Burning": 0.0,
+    "Wildfire": 0.0,
+    "Mining": 0.0,
+    "Other": 1.0
+  };
+  let model_version = "random_forest_v1.0.0";
 
-  if (isDemo) {
-    const votes: Record<string, number> = {
-      "Industrial Fire": 1,
-      "Gas Flare": 1,
-      "Agricultural Burning": 1,
-      "Wildfire": 1,
-      "Mining": 1,
-      "Other": 1
-    };
-
-    if (isIndustrialZone || features.dist_industry_km < 0.8) {
-      if (tempProfile.persistence_days >= 7 && tempProfile.recurrence_ratio >= 0.4) {
-        votes["Gas Flare"] += 85;
-        votes["Industrial Fire"] += 8;
-        votes["Other"] += 2;
-      } else if (raw.frp >= 100 || raw.brightness >= 385) {
-        votes["Industrial Fire"] += 88;
-        votes["Gas Flare"] += 4;
-        votes["Other"] += 3;
-      } else {
-        if (tempProfile.persistence_days > 3) {
-          votes["Gas Flare"] += 62;
-          votes["Industrial Fire"] += 28;
-        } else {
-          votes["Industrial Fire"] += 58;
-          votes["Gas Flare"] += 32;
-        }
-      }
-    } else if (isForestZone) {
-      if (raw.frp >= 40 || raw.brightness >= 340) {
-        votes["Wildfire"] += 90;
-        votes["Other"] += 4;
-      } else {
-        votes["Wildfire"] += 70;
-        votes["Other"] += 20;
-      }
-    } else if (isFarmlandZone) {
-      if (tempProfile.persistence_days <= 5 && raw.frp < 80) {
-        votes["Agricultural Burning"] += 88;
-        votes["Other"] += 5;
-      } else {
-        votes["Agricultural Burning"] += 65;
-        votes["Wildfire"] += 25;
-      }
-    } else if (isMiningZone || (features.dist_industry_km < 2.0 && tempProfile.persistence_days >= 14)) {
-      votes["Mining"] += 85;
-      votes["Industrial Fire"] += 7;
-      votes["Other"] += 3;
-    } else {
-      votes["Other"] += 75;
-    }
-
-    const totalVotes = Object.values(votes).reduce((a, b) => a + b, 0);
-    maxProb = 0;
-    for (const [cls, v] of Object.entries(votes)) {
-      const p = Math.round((v / totalVotes) * 1000) / 1000;
-      classProbabilities[cls] = p;
-      if (p > maxProb) {
-        maxProb = p;
-        topClass = cls;
-      }
-    }
-    model_version = "heuristic_v1.0";
+  try {
+    const mlPred = predictWithRandomForest(features);
+    topClass = mlPred.predicted_class;
+    maxProb = mlPred.confidence;
+    classProbabilities = mlPred.class_probabilities;
+    model_version = mlPred.model_version;
+  } catch (err: any) {
+    console.error("ThermoGuard ML Error: Single event inference failed:", err.message);
+    topClass = "ML_UNAVAILABLE";
+    maxProb = 0.0;
+    model_version = "ML_UNAVAILABLE";
   }
 
   // Risk Scoring (Independent of model confidence)
@@ -2588,66 +2552,22 @@ async function startServer() {
     });
   });
 
+  app.get("/api/ml/status", (req, res) => {
+    const status = getMLModelStatus();
+    res.json(status);
+  });
+
   app.post("/api/ml/predict", (req, res) => {
-    const features = req.body || {};
-    // Extract features and run decision tree ensemble
-    const isInd = features.is_industrial_land || (features.distance_to_industry_km && features.distance_to_industry_km <= 0.8) ? 1 : 0;
-    const isForest = features.forest_context || features.is_forest_land ? 1 : 0;
-    const isFarm = features.agricultural_context || features.is_farmland ? 1 : 0;
-    const isMine = features.mining_nearby_flag || features.is_mining_land ? 1 : 0;
-    const persistDays = features.persistence_days || (features.persistence_days_log ? Math.expm1(features.persistence_days_log) : 1);
-    const recRatio = features.recurrence_ratio || 0.1;
-    const frp = features.frp || 30.0;
-    const bright = features.brightness || 330.0;
-
-    let predictedClass = "Other";
-    let conf = 0.75;
-    const probs: Record<string, number> = {
-      "Industrial Fire": 0.05,
-      "Gas Flare": 0.05,
-      "Agricultural Burning": 0.05,
-      "Wildfire": 0.05,
-      "Mining": 0.05,
-      "Other": 0.75
-    };
-
-    if (isInd > 0.5) {
-      if (persistDays >= 7 && recRatio >= 0.4) {
-        predictedClass = "Gas Flare";
-        conf = 0.88;
-        probs["Gas Flare"] = 0.88;
-        probs["Industrial Fire"] = 0.08;
-        probs["Other"] = 0.04;
-      } else if (frp >= 90 || bright >= 380) {
-        predictedClass = "Industrial Fire";
-        conf = 0.91;
-        probs["Industrial Fire"] = 0.91;
-        probs["Gas Flare"] = 0.05;
-        probs["Other"] = 0.04;
-      }
-    } else if (isForest > 0.5) {
-      predictedClass = "Wildfire";
-      conf = 0.89;
-      probs["Wildfire"] = 0.89;
-      probs["Other"] = 0.11;
-    } else if (isFarm > 0.5) {
-      predictedClass = "Agricultural Burning";
-      conf = 0.92;
-      probs["Agricultural Burning"] = 0.92;
-      probs["Other"] = 0.08;
-    } else if (isMine > 0.5) {
-      predictedClass = "Mining";
-      conf = 0.87;
-      probs["Mining"] = 0.87;
-      probs["Other"] = 0.13;
+    try {
+      const features = req.body || {};
+      const result = predictWithRandomForest(features);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        error: "INFERENCE_FAILED",
+        message: err.message
+      });
     }
-
-    res.json({
-      predicted_class: predictedClass,
-      confidence: conf,
-      class_probabilities: probs,
-      model_version: "random_forest_v1.0.0"
-    });
   });
 
   app.post("/api/analyze", async (req, res) => {

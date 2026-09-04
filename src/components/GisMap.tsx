@@ -84,7 +84,20 @@ export const GisMap: React.FC<GisMapProps> = ({
 
     mapInstanceRef.current = map;
 
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     return () => {
+      clearTimeout(timer);
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -248,9 +261,9 @@ export const GisMap: React.FC<GisMapProps> = ({
   const handleResetView = () => mapInstanceRef.current?.setView([22.5, 78.5], 5);
 
   return (
-    <div className="relative w-full h-full bg-slate-50 overflow-hidden flex-1">
+    <div className="relative w-full h-full min-h-0 bg-slate-50 overflow-hidden flex-1">
       {/* Map Target Div */}
-      <div ref={mapContainerRef} className="w-full h-full z-0" />
+      <div ref={mapContainerRef} className="w-full h-full min-h-0 z-0" />
 
       {/* Map Control Overlay (Top-Right) */}
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-2.5">

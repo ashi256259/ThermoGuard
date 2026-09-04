@@ -65,7 +65,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
 
   if (!hotspot) {
     return (
-      <aside className="w-full sm:w-96 lg:w-[420px] bg-white border-l border-slate-200 p-6 flex flex-col items-center justify-center text-center text-slate-500 z-20">
+      <aside className="w-full h-full bg-white p-6 flex flex-col items-center justify-center text-center text-slate-500 z-20">
         <Compass className="w-10 h-10 text-slate-400 mb-3 animate-spin-slow" />
         <p className="text-sm font-semibold text-slate-700">No Thermal Event Selected</p>
         <p className="text-xs text-slate-400 mt-1 max-w-xs">
@@ -102,7 +102,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
   };
 
   return (
-    <aside className="w-full sm:w-96 lg:w-[420px] bg-white border-l border-slate-200 flex flex-col h-full overflow-y-auto text-slate-700 z-20 shadow-sm">
+    <aside className="w-full flex-1 flex flex-col h-full min-h-0 overflow-y-auto text-slate-700 z-20">
       {/* 1. HEADER */}
       <div className="p-4 bg-white border-b border-slate-200 sticky top-0 z-20">
         <div className="flex justify-between items-start">
