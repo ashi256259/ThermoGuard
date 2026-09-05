@@ -4,6 +4,24 @@
  * Defaults to same-origin in development/production proxies
  */
 
+
+
+
+const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const res = await fetch(input, init);
+  if (res.status === 401) {
+    const clone = res.clone();
+    try {
+      const json = await clone.json();
+      if (json.error === "SESSION_EXPIRED_OR_INVALID" || (json.message && json.message.includes("Session token is invalid"))) {
+        localStorage.removeItem("thermoguard_auth_token");
+        window.location.reload();
+      }
+    } catch (e) {}
+  }
+  return res;
+};
+
 const API_BASE_URL = (((import.meta as any).env?.VITE_API_BASE_URL as string) || "").replace(/\/$/, "");
 
 function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
@@ -123,7 +141,7 @@ export const apiService = {
   /** Check backend health status */
   async checkHealth(): Promise<HealthResponse> {
     const url = `${API_BASE_URL}/api/health`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await apiFetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) {
       throw new Error(`Health check failed with status: ${res.status}`);
     }
@@ -155,7 +173,7 @@ export const apiService = {
 
     const qs = query.toString();
     const url = `${API_BASE_URL}/api/hotspots${qs ? `?${qs}` : ""}`;
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) {
       throw new Error(`Failed to fetch hotspots: ${res.status}`);
     }
@@ -164,7 +182,7 @@ export const apiService = {
 
   /** Get specific hotspot details */
   async getHotspotById(id: string): Promise<HotspotItem> {
-    const res = await fetch(`${API_BASE_URL}/api/hotspots/${id}`);
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}`);
     if (!res.ok) {
       throw new Error(`Failed to fetch hotspot ${id}`);
     }
@@ -173,7 +191,7 @@ export const apiService = {
 
   /** Get specific hotspot geo-context */
   async getHotspotContext(id: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/hotspots/${id}/context`);
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/context`);
     if (!res.ok) {
       throw new Error(`Failed to fetch context for hotspot ${id}`);
     }
@@ -182,7 +200,7 @@ export const apiService = {
 
   /** Get specific hotspot ML classification */
   async getHotspotClassification(id: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/hotspots/${id}/classification`);
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/classification`);
     if (!res.ok) {
       throw new Error(`Failed to fetch classification for hotspot ${id}`);
     }
@@ -191,7 +209,7 @@ export const apiService = {
 
   /** Get specific hotspot explainability intelligence dossier */
   async getHotspotIntelligence(id: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/hotspots/${id}/intelligence`);
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/intelligence`);
     if (!res.ok) {
       throw new Error(`Failed to fetch intelligence for hotspot ${id}`);
     }
@@ -200,7 +218,7 @@ export const apiService = {
 
   /** Get specific hotspot temporal profile */
   async getHotspotTemporalProfile(id: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/hotspots/${id}/temporal-profile`);
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/temporal-profile`);
     if (!res.ok) {
       throw new Error(`Failed to fetch temporal profile for hotspot ${id}`);
     }
@@ -220,7 +238,7 @@ export const apiService = {
       satellite: string;
     }>;
   }> {
-    const res = await fetch(`${API_BASE_URL}/api/hotspots/${id}/timeline`);
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/timeline`);
     if (!res.ok) {
       throw new Error(`Failed to fetch timeline for hotspot ${id}`);
     }
@@ -229,7 +247,7 @@ export const apiService = {
 
   /** Get high-level KPI statistics */
   async getStatistics(): Promise<StatisticsData> {
-    const res = await fetch(`${API_BASE_URL}/api/statistics`);
+    const res = await apiFetch(`${API_BASE_URL}/api/statistics`);
     if (!res.ok) {
       throw new Error(`Failed to fetch statistics: ${res.status}`);
     }
@@ -244,7 +262,7 @@ export const apiService = {
 
     const qs = query.toString();
     const url = `${API_BASE_URL}/api/alerts${qs ? `?${qs}` : ""}`;
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) {
       throw new Error(`Failed to fetch alerts: ${res.status}`);
     }
@@ -253,14 +271,14 @@ export const apiService = {
 
   /** Update lifecycle status of an operational alert */
   async updateAlertStatus(alertId: string, status: string, notes?: string, assignedTeam?: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
       method: "PATCH",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ status, notes, assigned_team: assignedTeam })
     });
     if (!res.ok) {
       // Fallback to PUT
-      const putRes = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
+      const putRes = await apiFetch(`${API_BASE_URL}/api/alerts/${alertId}/status`, {
         method: "PUT",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ status, notes, assigned_team: assignedTeam })
@@ -276,7 +294,7 @@ export const apiService = {
 
   /** Assign operational response team to an alert */
   async assignAlertTeam(alertId: string, team: string, notes?: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/assign`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/alerts/${alertId}/assign`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ team, notes })
@@ -290,7 +308,7 @@ export const apiService = {
 
   /** Execute formal incident alert command action (ACKNOWLEDGE, ASSIGN, INVESTIGATE, RESOLVE, REOPEN, ESCALATE) */
   async executeAlertAction(alertId: string, action: string, notes?: string, team?: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/action`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/alerts/${alertId}/action`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ action, notes, team })
@@ -304,7 +322,7 @@ export const apiService = {
 
   /** Administrative Overview Telemetry */
   async getAdminOverview(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/overview`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/overview`, {
       headers: getAuthHeaders({ Accept: "application/json" })
     });
     if (!res.ok) {
@@ -316,7 +334,7 @@ export const apiService = {
 
   /** Detailed System Health Metrics */
   async getAdminSystemHealth(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/system-health`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/system-health`, {
       headers: getAuthHeaders({ Accept: "application/json" })
     });
     if (!res.ok) {
@@ -328,7 +346,7 @@ export const apiService = {
 
   /** List all registered users (Admin only) */
   async getAdminUsers(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/users`, {
       headers: getAuthHeaders({ Accept: "application/json" })
     });
     if (!res.ok) {
@@ -347,7 +365,7 @@ export const apiService = {
     role: string;
     department?: string;
   }): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/users`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(userData)
@@ -361,7 +379,7 @@ export const apiService = {
 
   /** Update user role & clearance (Admin only) */
   async updateAdminUserRole(userId: string, role: string, clearanceLevel?: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/role`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/users/${userId}/role`, {
       method: "PATCH",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ role, clearance_level: clearanceLevel })
@@ -375,7 +393,7 @@ export const apiService = {
 
   /** Delete a user account (Admin only) */
   async deleteAdminUser(userId: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
       method: "DELETE",
       headers: getAuthHeaders({ Accept: "application/json" })
     });
@@ -388,7 +406,7 @@ export const apiService = {
 
   /** List active user sessions (Admin only) */
   async getAdminSessions(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/sessions`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/sessions`, {
       headers: getAuthHeaders({ Accept: "application/json" })
     });
     if (!res.ok) {
@@ -400,7 +418,7 @@ export const apiService = {
 
   /** Revoke an active session token (Admin only) */
   async revokeAdminSession(token: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/sessions/revoke`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/sessions/revoke`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ token })
@@ -414,7 +432,7 @@ export const apiService = {
 
   /** Get system admin configurations */
   async getAdminConfig(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/config`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/config`, {
       headers: getAuthHeaders({ Accept: "application/json" })
     });
     if (!res.ok) {
@@ -426,7 +444,7 @@ export const apiService = {
 
   /** Update system admin configurations */
   async updateAdminConfig(config: Record<string, any>): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/config`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/config`, {
       method: "PUT",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(config)
@@ -440,7 +458,7 @@ export const apiService = {
 
   /** Toggle or set data mode (LIVE vs DEMO) */
   async toggleAdminDataMode(mode?: "LIVE" | "DEMO" | "LIVE_SATELLITE_API" | "DEMO_SAMPLE_DATA"): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/toggle-data-mode`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/toggle-data-mode`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ mode })
@@ -454,7 +472,7 @@ export const apiService = {
 
   /** Test provider connectivity diagnostics */
   async testAdminProvider(provider: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/admin/provider/test`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/admin/provider/test`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ provider })
@@ -468,7 +486,7 @@ export const apiService = {
 
   /** Get machine learning model metadata & feature weights */
   async getMlModelInfo(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ml/model-info`);
+    const res = await apiFetch(`${API_BASE_URL}/api/ml/model-info`);
     if (!res.ok) {
       throw new Error(`Failed to fetch ML model info: ${res.status}`);
     }
@@ -477,7 +495,7 @@ export const apiService = {
 
   /** Execute direct ML tabular inference on feature vector */
   async predictMlDirect(features: Record<string, number>): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ml/predict`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/ml/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ features })
@@ -490,7 +508,7 @@ export const apiService = {
 
   /** Get available filter taxonomies */
   async getFilters(): Promise<FilterOptionsData> {
-    const res = await fetch(`${API_BASE_URL}/api/filters`);
+    const res = await apiFetch(`${API_BASE_URL}/api/filters`);
     if (!res.ok) {
       throw new Error(`Failed to fetch filters: ${res.status}`);
     }
@@ -506,7 +524,7 @@ export const apiService = {
     confidence?: number;
     satellite?: string;
   }): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/analyze`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -520,7 +538,7 @@ export const apiService = {
   /** Get data provider integration status */
   async getProviderStatus(validate: boolean = false): Promise<any> {
     const url = validate ? `${API_BASE_URL}/api/provider/status?validate=true` : `${API_BASE_URL}/api/provider/status`;
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) {
       throw new Error(`Failed to fetch provider status: ${res.status}`);
     }
@@ -533,13 +551,13 @@ export const apiService = {
     if (key) params.append("key", key);
     if (force) params.append("force", "true");
     const query = params.toString() ? `?${params.toString()}` : "";
-    const res = await fetch(`${API_BASE_URL}/api/provider/firms-check${query}`);
+    const res = await apiFetch(`${API_BASE_URL}/api/provider/firms-check${query}`);
     return res.json();
   },
 
   /** Get automatic ingestion status & metrics */
   async getIngestionStatus(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ingest/status`);
+    const res = await apiFetch(`${API_BASE_URL}/api/ingest/status`);
     if (!res.ok) {
       throw new Error(`Failed to fetch ingestion status: ${res.status}`);
     }
@@ -548,7 +566,7 @@ export const apiService = {
 
   /** Trigger on-demand live NASA FIRMS ingestion */
   async triggerLiveIngestion(bbox?: string, source?: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ingest/firms-live`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/ingest/firms-live`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bbox, source })
@@ -561,7 +579,7 @@ export const apiService = {
 
   /** Get SIH 2026 test scenarios A-E */
   async getScenarios(): Promise<any[]> {
-    const res = await fetch(`${API_BASE_URL}/api/scenarios`);
+    const res = await apiFetch(`${API_BASE_URL}/api/scenarios`);
     if (!res.ok) {
       throw new Error(`Failed to fetch scenarios: ${res.status}`);
     }
@@ -570,7 +588,7 @@ export const apiService = {
 
   /** Load a specific SIH test scenario into the active store */
   async loadScenario(scenarioId: string): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/scenarios/${scenarioId}/load`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/scenarios/${scenarioId}/load`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -582,7 +600,7 @@ export const apiService = {
 
   /** Reset data store to calibrated demo baseline */
   async resetDemo(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/scenarios/reset-demo`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/scenarios/reset-demo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -594,7 +612,7 @@ export const apiService = {
 
   /** Ingest batch of NASA FIRMS records */
   async ingestFirmsRecords(records: any[], autoEnrich: boolean = true): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ingest/firms`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/ingest/firms`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ records, auto_enrich: autoEnrich })
@@ -607,7 +625,7 @@ export const apiService = {
 
   /** Get ML model metadata and specification */
   async getModelInfo(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ml/model-info`);
+    const res = await apiFetch(`${API_BASE_URL}/api/ml/model-info`);
     if (!res.ok) {
       throw new Error(`Failed to fetch ML model info: ${res.status}`);
     }
@@ -616,7 +634,7 @@ export const apiService = {
 
   /** Get ingestion pipeline statistics */
   async getIngestionStats(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/api/ingest/stats`);
+    const res = await apiFetch(`${API_BASE_URL}/api/ingest/stats`);
     if (!res.ok) {
       throw new Error(`Failed to fetch ingestion stats: ${res.status}`);
     }

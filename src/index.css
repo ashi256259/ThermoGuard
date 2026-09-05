@@ -36,6 +36,7 @@ html, body {
   background-color: #F8FAFC !important;
   font-family: inherit;
   z-index: 10;
+  touch-action: none !important;
 }
 
 .tactical-map-tooltip {
@@ -116,4 +117,13 @@ html, body {
 
 .animate-fade-in {
   animation: fadeIn 0.18s ease-out forwards;
+}
+
+
+/* Fix Leaflet Dragging */
+.leaflet-container {
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
 }

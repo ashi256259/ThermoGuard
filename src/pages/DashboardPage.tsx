@@ -312,6 +312,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       center: [22.5, 78.5],
       zoom: 5,
       zoomControl: false,
+      dragging: true,
+      tap: true,
+      touchZoom: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      boxZoom: true,
       attributionControl: true
     });
 
@@ -572,10 +578,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const persistentHotspot = hotspots.find(h => h.temporal_profile.is_persistent) || hotspots[0];
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6 w-full h-full pb-10">
+    <div className="flex flex-col gap-4 sm:gap-6 w-full min-h-full pb-10">
       {/* 1. HERO SECTION */}
-      <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 relative border border-slate-200/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 shadow-xs overflow-hidden">
-        <div className="relative z-10 max-w-2xl">
+      <div className="bg-white rounded-xl sm:rounded-2xl py-5 sm:py-6 lg:py-8 px-5 sm:px-6 lg:px-8 relative border border-slate-200/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 shadow-xs shrink-0">
+        <div className="relative z-10 max-w-2xl shrink-0">
           <div className="text-[10px] sm:text-[11px] font-bold text-blue-600 tracking-wider uppercase mb-1 sm:mb-2">
             THERMAL SOURCE INTELLIGENCE
           </div>
@@ -815,7 +821,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
             
             <div className="flex-1 min-h-0 relative bg-slate-100 overflow-hidden">
-              <div ref={mapContainerRef} className="w-full h-full min-h-0 z-0" />
+              <div ref={mapContainerRef} className="absolute inset-0 z-10" />
               
               {/* Risk Legend */}
               <div className="absolute bottom-3 left-3 z-[400] px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-white/95 border border-slate-200 text-xs space-y-1 backdrop-blur-xs shadow-2xs max-w-[150px] sm:max-w-none">

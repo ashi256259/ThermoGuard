@@ -66,6 +66,12 @@ export const GisMap: React.FC<GisMapProps> = ({
       center: mapCenter,
       zoom: mapZoom,
       zoomControl: false,
+      dragging: true,
+      tap: true,
+      touchZoom: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      boxZoom: true,
       attributionControl: true,
     });
 
@@ -263,7 +269,7 @@ export const GisMap: React.FC<GisMapProps> = ({
   return (
     <div className="relative w-full h-full min-h-0 bg-slate-50 overflow-hidden flex-1">
       {/* Map Target Div */}
-      <div ref={mapContainerRef} className="w-full h-full min-h-0 z-0" />
+      <div ref={mapContainerRef} className="absolute inset-0 z-10" />
 
       {/* Map Control Overlay (Top-Right) */}
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-2.5">
