@@ -20,7 +20,8 @@ import {
   Download,
   FileSpreadsheet,
   ChevronDown,
-  Layers
+  Layers,
+  ShieldCheck
 } from "lucide-react";
 import { apiService, HotspotItem } from "../services/api";
 import {
@@ -31,6 +32,7 @@ import {
 } from "../utils/reportExporter";
 import { AnalystVerificationCard } from "../components/AnalystVerificationCard";
 import { ThermalSourceFingerprintCard } from "../components/ThermalSourceFingerprintCard";
+import { IntelligenceReportModal } from "../components/IntelligenceReportModal";
 
 interface SourceDetailsPageProps {
   hotspot?: HotspotItem | null;
@@ -129,6 +131,7 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [isExportingCsv, setIsExportingCsv] = useState<boolean>(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState<boolean>(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // Fetch all required data from the API
@@ -349,6 +352,18 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* View Intelligence Report Button */}
+            <button
+              id="btn-view-intelligence-report"
+              onClick={() => setIsReportModalOpen(true)}
+              disabled={!currentHotspot}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-md shadow-blue-600/20 hover:shadow-lg hover:shadow-blue-600/30 transition-all duration-200 cursor-pointer disabled:opacity-50 active:scale-[0.98] border border-blue-500/50"
+              title="Open Evidence & Intelligence Report for this thermal anomaly"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-200" />
+              <span>View Intelligence Report</span>
+            </button>
+
             {/* Floating Download Pipeline Report Button with Dropdown */}
             <div className="relative">
               <button
@@ -665,8 +680,17 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Direct Quick Export Buttons */}
+                    {/* Direct Quick Action Buttons */}
                     <div className="flex sm:flex-col gap-1.5 justify-center">
+                      <button
+                        id="btn-view-intelligence-report-hero"
+                        onClick={() => setIsReportModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        title="View complete Evidence & Intelligence Report"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Intelligence Report</span>
+                      </button>
                       <button
                         onClick={() => handleDownloadPdf(currentHotspot)}
                         disabled={isExportingPdf}
@@ -854,6 +878,13 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
           )}
         </div>
       </div>
+
+      {/* Evidence & Intelligence Report Modal */}
+      <IntelligenceReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        hotspot={currentHotspot}
+      />
     </div>
   );
 };

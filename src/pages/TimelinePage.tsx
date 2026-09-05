@@ -21,12 +21,34 @@ interface TimelinePageProps {
 }
 
 interface TimelineObservation {
+  id?: string;
   date?: string;
   timestamp?: string;
   frp: number;
   brightness: number;
   satellite: string;
   confidence?: number;
+  daynight?: string;
+}
+
+interface TimelineResponseMeta {
+  time_range?: {
+    days_requested: number | string;
+    earliest_pass: string;
+    latest_pass: string;
+    span_days: number;
+  };
+  summary?: {
+    total_passes: number;
+    active_days: number;
+    avg_frp: number;
+    max_frp: number;
+    min_frp: number;
+    avg_brightness: number;
+    day_passes: number;
+    night_passes: number;
+    satellites: string[];
+  };
 }
 
 export const TimelinePage: React.FC<TimelinePageProps> = ({
@@ -39,6 +61,8 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
   const [hotspots, setHotspots] = useState<HotspotItem[]>([]);
   const [activeHotspot, setActiveHotspot] = useState<HotspotItem | null>(selectedHotspot || null);
   const [timelineData, setTimelineData] = useState<TimelineObservation[]>([]);
+  const [timelineMeta, setTimelineMeta] = useState<TimelineResponseMeta | null>(null);
+  const [selectedRange, setSelectedRange] = useState<"7" | "30" | "90" | "all">("90");
   const [loadingTimeline, setLoadingTimeline] = useState<boolean>(false);
   const [filterPersistent, setFilterPersistent] = useState<boolean>(initialFilterPersistent || false);
 
@@ -76,19 +100,24 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
     }
   }, [selectedHotspot]);
 
-  const fetchTimeline = async (hotspotToLoad: HotspotItem) => {
+  const fetchTimeline = async (hotspotToLoad: HotspotItem, range: "7" | "30" | "90" | "all" = selectedRange) => {
     try {
       setLoadingTimeline(true);
-      const res = await apiService.getHotspotTimeline(hotspotToLoad.event.id);
+      const res = await apiService.getHotspotTimeline(hotspotToLoad.event.id, range);
       const history: TimelineObservation[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.observation_history)
         ? res.observation_history
         : [];
       setTimelineData(history);
+      setTimelineMeta({
+        time_range: res?.time_range,
+        summary: res?.summary
+      });
     } catch (err) {
       console.error("Failed to load timeline passes", err);
       setTimelineData([]);
+      setTimelineMeta(null);
     } finally {
       setLoadingTimeline(false);
     }
@@ -96,9 +125,9 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
 
   useEffect(() => {
     if (activeHotspot) {
-      fetchTimeline(activeHotspot);
+      fetchTimeline(activeHotspot, selectedRange);
     }
-  }, [activeHotspot]);
+  }, [activeHotspot, selectedRange]);
 
   const handleSelectTarget = (target: HotspotItem) => {
     setActiveHotspot(target);
@@ -208,7 +237,7 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
         </div>
       </div>
 
-      {/* Header Bar */}
+      {/* Header Bar with Time Range Filter Controls */}
       <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -220,8 +249,33 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Differentiates transient biomass burning from continuous industrial infrastructure across historical satellite revisits.
+            Historical NASA FIRMS VIIRS/MODIS satellite overpasses clustered across time to isolate persistent industrial sources from transient fires.
           </p>
+        </div>
+
+        {/* Time Window Range Selector */}
+        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80 self-start md:self-auto">
+          <span className="text-[10px] font-semibold text-slate-500 uppercase px-2 hidden sm:inline">Window:</span>
+          {(
+            [
+              { id: "7", label: "7 Days" },
+              { id: "30", label: "30 Days" },
+              { id: "90", label: "90 Days" },
+              { id: "all", label: "All History" }
+            ] as const
+          ).map((rng) => (
+            <button
+              key={rng.id}
+              onClick={() => setSelectedRange(rng.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                selectedRange === rng.id
+                  ? "bg-white text-blue-700 shadow-xs border border-slate-200"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {rng.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -244,32 +298,32 @@ export const TimelinePage: React.FC<TimelinePageProps> = ({
             </div>
 
             <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
-              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Persistence Duration</div>
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active Span</div>
               <div className="text-xl sm:text-2xl font-black text-blue-600 font-mono mt-0.5 sm:mt-1">
-                {activeHotspot.temporal_profile.persistence_days} <span className="text-xs text-slate-400 font-normal">days</span>
+                {timelineMeta?.time_range?.span_days ?? activeHotspot.temporal_profile.persistence_days} <span className="text-xs text-slate-400 font-normal">days</span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
-                First seen {activeHotspot.temporal_profile.first_seen}
+                {timelineMeta?.time_range?.earliest_pass ? `From ${timelineMeta.time_range.earliest_pass.split('T')[0]}` : `First seen ${activeHotspot.temporal_profile.first_seen}`}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
-              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Passes</div>
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Satellite Passes</div>
               <div className="text-xl sm:text-2xl font-black text-amber-600 font-mono mt-0.5 sm:mt-1">
-                {activeHotspot.temporal_profile.observation_count} <span className="text-xs text-slate-400 font-normal">detections</span>
+                {passesToRender.length} <span className="text-xs text-slate-400 font-normal">passes</span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
-                ~{activeHotspot.temporal_profile.frequency_per_week} passes / wk
+                {timelineMeta?.summary?.active_days ? `${timelineMeta.summary.active_days} active dates` : `~${activeHotspot.temporal_profile.frequency_per_week} passes / wk`}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white border border-slate-200/80 shadow-xs">
-              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Recurrence Ratio</div>
+              <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Avg / Peak FRP</div>
               <div className="text-xl sm:text-2xl font-black text-teal-700 font-mono mt-0.5 sm:mt-1">
-                {(activeHotspot.temporal_profile.recurrence_ratio * 100).toFixed(1)}%
+                {timelineMeta?.summary?.avg_frp ?? activeHotspot.event.frp} <span className="text-xs text-slate-400 font-normal">/ {timelineMeta?.summary?.max_frp ?? activeHotspot.event.frp} MW</span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
-                {activeHotspot.temporal_profile.seasonal_pattern || "Continuous"}
+                {activeHotspot.temporal_profile.seasonal_pattern || "Continuous signature"}
               </div>
             </div>
           </div>

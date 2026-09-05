@@ -1748,84 +1748,93 @@ export async function processLiveThermalEvent(raw: RawObservation): Promise<any>
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
 
-  // Database initialization
-  const dbInitialized = await initDb();
+  // In-memory data store initialized synchronously with calibrated baseline demo scenarios
+  let hotspots: any[] = RAW_HOTSPOTS.map((raw) => processThermalEvent(raw, true));
 
-  // In-memory data store for live sessions (populated from DB if available)
-  let hotspots: any[] = [];
-  if (dbInitialized) {
+  // Asynchronously initialize database and ML classification in background without blocking port listening
+  let dbInitialized = false;
+  const asyncInitPromise = (async () => {
     try {
-      const dbRecords = await loadAllHotspots();
-      hotspots = dbRecords.map((h: any) => {
-        const isDemo = h.event.id.startsWith("te-scen-");
-        return processThermalEvent(h.event, isDemo);
-      });
-    } catch (e) {
-      console.warn("ThermoGuard: DB load failed, fallback to benchmark seeds:", e);
-    }
-  }
-
-  // Ensure all calibrated demo benchmark scenarios are always present
-  for (const raw of RAW_HOTSPOTS) {
-    if (!hotspots.some((h) => h.event.id === raw.id)) {
-      const processed = processThermalEvent(raw, true);
-      hotspots.push(processed);
+      dbInitialized = await initDb();
       if (dbInitialized) {
-        persistHotspot(processed).catch(() => {});
+        try {
+          const dbRecords = await loadAllHotspots();
+          if (dbRecords && dbRecords.length > 0) {
+            const dbHotspots = dbRecords.map((h: any) => {
+              const isDemo = h.event.id.startsWith("te-scen-");
+              return processThermalEvent(h.event, isDemo);
+            });
+            for (const dh of dbHotspots) {
+              if (!hotspots.some((h) => h.event.id === dh.event.id)) {
+                hotspots.push(dh);
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn("ThermoGuard: DB load failed, fallback to benchmark seeds:", e?.message);
+        }
       }
-    }
-  }
 
-  // Run real Random Forest ML classification on all hotspots on startup
-  try {
-    await runMLClassification(hotspots);
-    console.log(`ThermoGuard: Initialized ${hotspots.length} hotspots with Random Forest inference.`);
-    if (dbInitialized) {
-      for (const h of hotspots) {
-        persistHotspot(h).catch(() => {});
-      }
-    }
-  } catch (err: any) {
-    console.warn("ThermoGuard: Initial ML classification warning:", err.message);
-  }
+      // Run real Random Forest ML classification on all hotspots
+      await runMLClassification(hotspots);
+      console.log(`ThermoGuard: Initialized ${hotspots.length} hotspots with Random Forest inference.`);
 
-  // Restore and attach any persisted human verifications so analyst decisions survive startup/reclassification
-  const storedVerifs = getAllVerificationRecords();
-  for (const h of hotspots) {
-    const v = storedVerifs[h.event.id];
-    if (v && v.verification_status && v.verification_status !== "UNVERIFIED") {
-      h.classification.verification_status = v.verification_status;
-      h.classification.verified_class = v.verified_class || null;
-      h.classification.verified_by = v.verified_by || null;
-      h.classification.verified_by_name = v.verified_by_name || null;
-      h.classification.verified_at = v.verified_at || null;
-      h.classification.verification_reason = v.verification_reason || null;
-      h.classification.verification_audit_trail = v.audit_trail || [];
-    }
-  }
-
-  // Pre-calculate and attach Thermal Source Fingerprint & Smart Alert Prioritization to all hotspots
-  for (const h of hotspots) {
-    try {
-      if (!h.fingerprint) {
-        h.fingerprint = computeThermalFingerprint(h.event, h.geo_context, h.temporal_profile, h.classification);
-      }
-      if (!h.priority) {
-        h.priority = computeSmartPriority(h.event, h.geo_context, h.temporal_profile, h.classification);
-      }
-      if (h.alert) {
-        h.alert.priority_score = h.alert.priority_score ?? h.priority.score;
-        h.alert.priority_level = h.alert.priority_level ?? h.priority.level;
-        h.alert.priority_factors = h.alert.priority_factors ?? h.priority.factors;
+      if (dbInitialized) {
+        for (const h of hotspots) {
+          persistHotspot(h).catch(() => {});
+        }
       }
     } catch (err: any) {
-      console.warn(`ThermoGuard: Error attaching fingerprint/priority to ${h.event?.id}:`, err?.message);
+      console.warn("ThermoGuard: Asynchronous database/ML initialization warning:", err?.message);
     }
-  }
+
+    // Restore and attach any persisted human verifications
+    try {
+      const storedVerifs = getAllVerificationRecords();
+      for (const h of hotspots) {
+        const v = storedVerifs[h.event.id];
+        if (v && v.verification_status && v.verification_status !== "UNVERIFIED") {
+          h.classification.verification_status = v.verification_status;
+          h.classification.verified_class = v.verified_class || null;
+          h.classification.verified_by = v.verified_by || null;
+          h.classification.verified_by_name = v.verified_by_name || null;
+          h.classification.verified_at = v.verified_at || null;
+          h.classification.verification_reason = v.verification_reason || null;
+          h.classification.verification_audit_trail = v.audit_trail || [];
+        }
+      }
+    } catch (verifErr: any) {
+      console.warn("ThermoGuard: Error attaching verifications:", verifErr?.message);
+    }
+
+    // Pre-calculate and attach Thermal Source Fingerprint & Smart Alert Prioritization to all hotspots
+    for (const h of hotspots) {
+      try {
+        if (!h.fingerprint) {
+          h.fingerprint = computeThermalFingerprint(h.event, h.geo_context, h.temporal_profile, h.classification);
+        }
+        if (!h.priority) {
+          h.priority = computeSmartPriority(h.event, h.geo_context, h.temporal_profile, h.classification);
+        }
+        if (h.alert) {
+          h.alert.priority_score = h.alert.priority_score ?? h.priority.score;
+          h.alert.priority_level = h.alert.priority_level ?? h.priority.level;
+          h.alert.priority_factors = h.alert.priority_factors ?? h.priority.factors;
+        }
+      } catch (err: any) {
+        console.warn(`ThermoGuard: Error attaching fingerprint/priority to ${h.event?.id}:`, err?.message);
+      }
+    }
+  })();
+
+  // Catch any unhandled errors in async background initialization
+  asyncInitPromise.catch((err) => {
+    console.warn("ThermoGuard: Background initialization completed with notes:", err?.message);
+  });
 
   let isLiveMode = (
     process.env.DATA_MODE === "LIVE" ||
@@ -2294,7 +2303,7 @@ async function startServer() {
     });
   });
 
-  async function fetchAndIngestLiveFirms(bbox = "68.0,6.5,97.5,37.5", source = "VIIRS_SNPP_NRT") {
+  async function fetchAndIngestLiveFirms(bbox = "68.0,6.5,97.5,37.5", source = "VIIRS_SNPP_NRT", days = 7) {
     if (ingestionStats.is_running) {
       return {
         status: "IN_PROGRESS",
@@ -2310,16 +2319,18 @@ async function startServer() {
       throw new Error("FIRMS_API_KEY not configured in environment.");
     }
 
+    const requestedDays = Math.min(10, Math.max(1, parseInt(String(days), 10) || 7));
+
     ingestionStats.is_running = true;
     ingestionStats.last_fetch_attempt = new Date().toISOString();
     ingestionStats.last_fetch_status = "RUNNING";
     ingestionStats.satellite_source = source;
 
     try {
-      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key.trim()}/${source}/${bbox}/1`;
+      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key.trim()}/${source}/${bbox}/${requestedDays}`;
       const response = await fetch(url, {
         headers: { "User-Agent": "ThermoGuard-AI-SIH26162/1.0" },
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(20000)
       });
 
       if (!response.ok) {
@@ -2342,6 +2353,7 @@ async function startServer() {
           total_deduplicated: 0,
           total_enriched: 0,
           records: [],
+          days_fetched: requestedDays,
           message: "NASA FIRMS returned no thermal anomalies in the requested area/time window."
         };
       }
@@ -2362,7 +2374,7 @@ async function startServer() {
       let rejected = 0;
       let deduplicated = 0;
       const newSeeds: HotspotSeed[] = [];
-      const seenClusters = new Set<string>();
+      const seenPasses = new Set<string>();
 
       for (let i = 1; i < lines.length; i++) {
         received++;
@@ -2394,22 +2406,28 @@ async function startServer() {
         const acqTime = timeIdx >= 0 ? parts[timeIdx].padStart(4, "0") : "1200";
         const timestamp = `${acqDate}T${acqTime.slice(0, 2)}:${acqTime.slice(2, 4)}:00Z`;
 
-        const clusterKey = `${Math.round(lat * 100) / 100}_${Math.round(lon * 100) / 100}`;
-        if (seenClusters.has(clusterKey)) {
+        const satNameRaw = satIdx >= 0 ? parts[satIdx] : source;
+        let satName = satNameRaw;
+        if (satNameRaw === "N") satName = "VIIRS_SNPP";
+        else if (satNameRaw === "1") satName = "VIIRS_NOAA20";
+        else if (satNameRaw === "2") satName = "VIIRS_NOAA21";
+        else if (satNameRaw === "T") satName = "MODIS_Terra";
+        else if (satNameRaw === "A") satName = "MODIS_Aqua";
+
+        // Deduplicate only identical satellite observation passes
+        const passKey = `${lat.toFixed(4)}_${lon.toFixed(4)}_${acqDate}_${acqTime}_${satName}`;
+        if (seenPasses.has(passKey)) {
           deduplicated++;
           continue;
         }
-        seenClusters.add(clusterKey);
+        seenPasses.add(passKey);
 
-        const hashStr = Math.abs(Math.round((lat + lon) * 10000)).toString(16);
-        const id = `te-live-${hashStr.slice(0, 8)}`;
-
-        if (hotspots.some((h) => h.event.id === id)) {
-          deduplicated++;
-          continue;
-        }
+        const timeHash = `${acqDate.replace(/-/g, "")}-${acqTime}`;
+        const coordHash = Math.abs(Math.round((lat + lon) * 10000)).toString(16);
+        const id = `te-live-${coordHash.slice(0, 6)}-${timeHash}`;
 
         const daynightVal: "D" | "N" = dnIdx >= 0 && parts[dnIdx] === "N" ? "N" : "D";
+        const clusterKey = `${Math.round(lat * 100) / 100}_${Math.round(lon * 100) / 100}`;
 
         newSeeds.push({
           id,
@@ -2419,7 +2437,7 @@ async function startServer() {
           brightness,
           frp,
           confidence,
-          satellite: satIdx >= 0 ? parts[satIdx] : "VIIRS_NRT",
+          satellite: satName,
           daynight: daynightVal,
           source: "NASA_FIRMS_LIVE",
           cluster_id: `cls-live-${clusterKey}`
@@ -2427,21 +2445,34 @@ async function startServer() {
         accepted++;
       }
 
+      // Sort chronological so clustering and temporal engine process passes in natural order
+      newSeeds.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
       const enrichedEvents: any[] = [];
       for (const s of newSeeds) {
         try {
           const enriched = await processLiveThermalEvent(s);
           enrichedEvents.push(enriched);
+
+          // Update or add representative cluster in hotspots memory list
+          const existingIdx = hotspots.findIndex((h) => h.temporal_profile?.cluster_id === enriched.temporal_profile?.cluster_id);
+          if (existingIdx >= 0) {
+            // Keep the latest observation as the active map marker with the accumulated temporal profile
+            if (new Date(enriched.event.timestamp).getTime() >= new Date(hotspots[existingIdx].event.timestamp).getTime()) {
+              hotspots[existingIdx] = enriched;
+            } else {
+              hotspots[existingIdx].temporal_profile = enriched.temporal_profile;
+            }
+          } else {
+            hotspots.unshift(enriched);
+          }
         } catch (procErr: any) {
           console.error(`Error in live temporal pipeline for event ${s.id}:`, procErr.message);
           const fallback = processThermalEvent(s, false);
           enrichedEvents.push(fallback);
+          hotspots.unshift(fallback);
         }
       }
-
-      const existingIds = new Set(enrichedEvents.map(e => e.event.id));
-      const remainingOld = hotspots.filter(h => !existingIds.has(h.event.id));
-      hotspots = [...enrichedEvents, ...remainingOld];
 
       ingestionStats.total_received += received;
       ingestionStats.total_accepted += accepted;
@@ -2462,6 +2493,7 @@ async function startServer() {
         total_rejected: rejected,
         total_deduplicated: deduplicated,
         total_enriched: enrichedEvents.length,
+        days_fetched: requestedDays,
         sample_ids: enrichedEvents.slice(0, 5).map((e) => e.event.id),
         satellite_source: source,
         cumulative_metrics: { ...ingestionStats },
@@ -2480,7 +2512,8 @@ async function startServer() {
     try {
       const bbox = req.body?.bbox || "68.0,6.5,97.5,37.5";
       const source = req.body?.source || "VIIRS_SNPP_NRT";
-      const result = await fetchAndIngestLiveFirms(bbox, source);
+      const days = req.body?.days || 7;
+      const result = await fetchAndIngestLiveFirms(bbox, source, days);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({
@@ -2707,55 +2740,94 @@ async function startServer() {
     if (!found) return res.status(404).json({ error: "Not found" });
 
     const clusterId = found.temporal_profile?.cluster_id || found.event?.cluster_id;
+    const requestedDaysRaw = req.query.days as string;
+    let windowHours = 2160; // 90 days default
+    if (requestedDaysRaw) {
+      if (requestedDaysRaw === "all" || requestedDaysRaw === "max") {
+        windowHours = 87600; // 10 years
+      } else {
+        const parsed = parseInt(requestedDaysRaw, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          windowHours = parsed * 24;
+        }
+      }
+    }
+
     let history: any[] = [];
 
-    if (found.event.source === "NASA_FIRMS_LIVE" || !found.event.id.startsWith("te-scen-")) {
-      // Query REAL database historical observations for this cluster
-      try {
-        const rawObs = await queryHistoricalObservationsForCluster(clusterId, TEMPORAL_CONFIG.CLUSTER_WINDOW_HOURS);
-        if (rawObs.length > 0) {
-          history = rawObs.map((o) => ({
-            date: o.timestamp.split("T")[0],
-            timestamp: o.timestamp,
-            frp: o.frp,
-            brightness: o.brightness,
-            satellite: o.satellite,
-            confidence: o.confidence,
-            daynight: o.daynight
-          }));
-        }
-      } catch (err) {
-        console.warn("Failed to query historical observations for timeline:", err);
+    // Query REAL database / persistent store historical observations for this cluster
+    try {
+      const rawObs = await queryHistoricalObservationsForCluster(clusterId, windowHours, found.event.timestamp);
+      if (rawObs.length > 0) {
+        history = rawObs.map((o) => ({
+          id: o.id,
+          date: o.timestamp.split("T")[0],
+          timestamp: o.timestamp,
+          frp: o.frp,
+          brightness: o.brightness,
+          satellite: o.satellite,
+          confidence: o.confidence,
+          daynight: o.daynight
+        }));
       }
+    } catch (err) {
+      console.warn("Failed to query historical observations for timeline:", err);
+    }
 
-      if (history.length === 0) {
-        // Fallback to the current single live event observation
-        history = [
-          {
-            date: found.event.timestamp.split("T")[0],
-            timestamp: found.event.timestamp,
-            frp: found.event.frp,
-            brightness: found.event.brightness,
-            satellite: found.event.satellite,
-            confidence: found.event.confidence,
-            daynight: found.event.daynight
-          }
-        ];
-      }
-    } else {
-      // Demo scenario with simulated historical passes
+    // Ensure at least the current observation is present if no historical records exist
+    if (history.length === 0) {
       history = [
-        { date: "2026-09-03", frp: found.event.frp, brightness: found.event.brightness, satellite: found.event.satellite },
-        { date: "2026-09-02", frp: Math.round(Math.max(5, found.event.frp * 0.92) * 10) / 10, brightness: Math.round((found.event.brightness - 3.5) * 10) / 10, satellite: "VIIRS_NOAA20" },
-        { date: "2026-09-01", frp: Math.round(Math.max(5, found.event.frp * 0.97) * 10) / 10, brightness: Math.round((found.event.brightness + 2) * 10) / 10, satellite: "MODIS_Aqua" },
-        { date: "2026-08-30", frp: Math.round(Math.max(5, found.event.frp * 0.88) * 10) / 10, brightness: Math.round((found.event.brightness - 5) * 10) / 10, satellite: "VIIRS_SNPP" },
-        { date: "2026-08-28", frp: Math.round(Math.max(5, found.event.frp * 1.05) * 10) / 10, brightness: Math.round((found.event.brightness + 1.2) * 10) / 10, satellite: "MODIS_Terra" }
+        {
+          id: found.event.id,
+          date: found.event.timestamp.split("T")[0],
+          timestamp: found.event.timestamp,
+          frp: found.event.frp,
+          brightness: found.event.brightness,
+          satellite: found.event.satellite,
+          confidence: found.event.confidence,
+          daynight: found.event.daynight
+        }
       ];
     }
+
+    // Sort chronologically ascending
+    history.sort((a, b) => new Date(a.timestamp || a.date).getTime() - new Date(b.timestamp || b.date).getTime());
+
+    // Calculate comprehensive multi-pass summary statistics
+    const frpVals = history.map((h) => h.frp).filter((v) => typeof v === "number" && !isNaN(v));
+    const brightVals = history.map((h) => h.brightness).filter((v) => typeof v === "number" && !isNaN(v));
+    const uniqueDates = new Set(history.map((h) => h.date || (h.timestamp ? h.timestamp.split("T")[0] : "")));
+    const uniqueSats = Array.from(new Set(history.map((h) => h.satellite).filter(Boolean)));
+    const dayPasses = history.filter((h) => h.daynight === "D").length;
+    const nightPasses = history.filter((h) => h.daynight === "N").length;
+
+    const earliestDate = history[0]?.timestamp || history[0]?.date || found.event.timestamp;
+    const latestDate = history[history.length - 1]?.timestamp || history[history.length - 1]?.date || found.event.timestamp;
+    const spanMs = Math.abs(new Date(latestDate).getTime() - new Date(earliestDate).getTime());
+    const spanDays = Math.max(1, Math.round(spanMs / (1000 * 60 * 60 * 24)));
+
+    const summary = {
+      total_passes: history.length,
+      active_days: uniqueDates.size,
+      avg_frp: frpVals.length > 0 ? Math.round((frpVals.reduce((a, b) => a + b, 0) / frpVals.length) * 10) / 10 : found.event.frp,
+      max_frp: frpVals.length > 0 ? Math.max(...frpVals) : found.event.frp,
+      min_frp: frpVals.length > 0 ? Math.min(...frpVals) : found.event.frp,
+      avg_brightness: brightVals.length > 0 ? Math.round((brightVals.reduce((a, b) => a + b, 0) / brightVals.length) * 10) / 10 : found.event.brightness,
+      day_passes: dayPasses,
+      night_passes: nightPasses,
+      satellites: uniqueSats.length > 0 ? uniqueSats : [found.event.satellite]
+    };
 
     res.json({
       event_id: req.params.id,
       cluster_id: clusterId,
+      time_range: {
+        days_requested: requestedDaysRaw || 90,
+        earliest_pass: earliestDate,
+        latest_pass: latestDate,
+        span_days: spanDays
+      },
+      summary,
       temporal_profile: found.temporal_profile,
       observation_history: history
     });

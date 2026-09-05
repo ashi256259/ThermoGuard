@@ -10,23 +10,30 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Enum types for classification and risk levels
-CREATE TYPE source_class_enum AS ENUM (
-    'Industrial Fire',
-    'Gas Flare',
-    'Agricultural Burning',
-    'Wildfire',
-    'Mining',
-    'Other',
-    'ML_UNAVAILABLE'
-);
-
-CREATE TYPE risk_level_enum AS ENUM (
-    'LOW',
-    'MEDIUM',
-    'HIGH',
-    'CRITICAL'
-);
+-- Enum types for classification and risk levels (idempotent creation)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'source_class_enum') THEN
+        CREATE TYPE source_class_enum AS ENUM (
+            'Industrial Fire',
+            'Gas Flare',
+            'Agricultural Burning',
+            'Wildfire',
+            'Mining',
+            'Other',
+            'ML_UNAVAILABLE'
+        );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_level_enum') THEN
+        CREATE TYPE risk_level_enum AS ENUM (
+            'LOW',
+            'MEDIUM',
+            'HIGH',
+            'CRITICAL'
+        );
+    END IF;
+END
+$$;
 
 -- 1. Table: industrial_facilities (OSM and Industrial cadastral POIs)
 CREATE TABLE IF NOT EXISTS industrial_facilities (

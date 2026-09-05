@@ -18,10 +18,11 @@ import {
 import { HotspotRecord, HotspotIntelligence } from "../types";
 import { TimelineChart } from "./TimelineChart";
 import { Tooltip } from "./Tooltip";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ShieldCheck } from "lucide-react";
 import { extractEvidenceArray } from "../utils/reportExporter";
 import { AnalystVerificationCard } from "./AnalystVerificationCard";
 import { ThermalSourceFingerprintCard } from "./ThermalSourceFingerprintCard";
+import { IntelligenceReportModal } from "./IntelligenceReportModal";
 
 interface DetailPanelProps {
   hotspot: HotspotRecord | null;
@@ -42,6 +43,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [intelligenceData, setIntelligenceData] = useState<HotspotIntelligence | null>(null);
   const [showTechnical, setShowTechnical] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -344,10 +346,19 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
 
         {/* Action Buttons */}
         <div className="pt-1 flex flex-col gap-2">
+          <button
+            id="btn-detail-panel-view-intelligence-report"
+            onClick={() => setIsReportModalOpen(true)}
+            className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer min-h-[44px]"
+          >
+            <ShieldCheck className="w-4 h-4 text-blue-100" />
+            <span>View Intelligence Report</span>
+          </button>
+
           {onInspectDetails && (
             <button
               onClick={() => onInspectDetails(hotspot)}
-              className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer min-h-[44px]"
+              className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-200 shadow-xs transition-all cursor-pointer min-h-[44px]"
             >
               <span>Detailed Telemetry Dossier</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -364,6 +375,13 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Evidence & Intelligence Report Modal */}
+      <IntelligenceReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        hotspot={activeHotspot}
+      />
     </aside>
   );
 };

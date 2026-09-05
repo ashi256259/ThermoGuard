@@ -233,19 +233,40 @@ export const apiService = {
   },
 
   /** Get multi-temporal observation timeline for a hotspot */
-  async getHotspotTimeline(id: string): Promise<{
+  async getHotspotTimeline(id: string, days?: number | string): Promise<{
     event_id: string;
     cluster_id: string;
     temporal_profile: any;
+    time_range?: {
+      days_requested: number | string;
+      earliest_pass: string;
+      latest_pass: string;
+      span_days: number;
+    };
+    summary?: {
+      total_passes: number;
+      active_days: number;
+      avg_frp: number;
+      max_frp: number;
+      min_frp: number;
+      avg_brightness: number;
+      day_passes: number;
+      night_passes: number;
+      satellites: string[];
+    };
     observation_history: Array<{
+      id?: string;
       date: string;
       timestamp?: string;
       frp: number;
       brightness: number;
       satellite: string;
+      confidence?: number;
+      daynight?: string;
     }>;
   }> {
-    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/timeline`);
+    const qs = days ? `?days=${days}` : "";
+    const res = await apiFetch(`${API_BASE_URL}/api/hotspots/${id}/timeline${qs}`);
     if (!res.ok) {
       throw new Error(`Failed to fetch timeline for hotspot ${id}`);
     }
