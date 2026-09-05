@@ -7,6 +7,8 @@
 
 
 
+import { ThermalSourceFingerprint, SmartAlertPriority } from "../types";
+
 const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const res = await fetch(input, init);
   if (res.status === 401) {
@@ -115,7 +117,12 @@ export interface HotspotItem {
     action_recommended?: string;
     status: string;
     created_at: string;
+    priority_score?: number;
+    priority_level?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
+    priority_factors?: string[];
   };
+  fingerprint?: ThermalSourceFingerprint;
+  priority?: SmartAlertPriority;
 }
 
 export interface StatisticsData {
@@ -637,6 +644,38 @@ export const apiService = {
     const res = await apiFetch(`${API_BASE_URL}/api/ingest/stats`);
     if (!res.ok) {
       throw new Error(`Failed to fetch ingestion stats: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Priority 6: Submit Analyst Human Verification / Classification decision */
+  async verifyThermalEvent(
+    eventId: string,
+    params: {
+      status: "CONFIRMED" | "RECLASSIFIED" | "NEEDS_REVIEW";
+      verified_class?: string;
+      reason?: string;
+    }
+  ): Promise<any> {
+    const res = await apiFetch(`${API_BASE_URL}/api/events/${eventId}/verify`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Verification failed with status: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Get Verification status and audit history for an event */
+  async getEventVerification(eventId: string): Promise<any> {
+    const res = await apiFetch(`${API_BASE_URL}/api/events/${eventId}/verification`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch verification for ${eventId}: ${res.status}`);
     }
     return res.json();
   }

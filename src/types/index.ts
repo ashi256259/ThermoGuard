@@ -143,6 +143,28 @@ export interface ClassificationResult {
   structured_evidence?: StructuredEvidence;
   risk_reasons?: string[];
   explanation?: string;
+  // Priority 6: Human Verification / Analyst Review
+  verification_status?: VerificationStatus;
+  verified_class?: SourceClass | string | null;
+  verified_by?: string | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  verification_reason?: string | null;
+  verification_audit_trail?: VerificationAuditEntry[];
+}
+
+export type VerificationStatus = "UNVERIFIED" | "CONFIRMED" | "RECLASSIFIED" | "NEEDS_REVIEW";
+
+export interface VerificationAuditEntry {
+  timestamp: string;
+  action: VerificationStatus | string;
+  performed_by: string;
+  user_id?: string;
+  badge_number?: string | null;
+  previous_status?: VerificationStatus | string;
+  ai_predicted_class?: string;
+  verified_class?: string | null;
+  reason?: string | null;
 }
 
 export type IncidentStatus = "NEW" | "ACTIVE" | "ACKNOWLEDGED" | "ASSIGNED" | "INVESTIGATING" | "RESOLVED";
@@ -181,6 +203,31 @@ export interface AlertItem {
   audit_trail?: AlertAuditEntry[];
   created_at: string;
   updated_at?: string;
+  // Smart Alert Prioritization
+  priority_score?: number;
+  priority_level?: RiskLevel;
+  priority_factors?: string[];
+}
+
+export interface ThermalSourceFingerprint {
+  persistence: "Low" | "Medium" | "High" | "Insufficient observations";
+  persistence_level: "LOW" | "MEDIUM" | "HIGH" | "INSUFFICIENT_DATA";
+  recurrence: string;
+  active_days: number | string;
+  temporal_pattern: "Recurrent" | "Episodic" | "Persistent" | "Isolated" | "Temporal Pattern Uncertain" | string;
+  night_activity: string;
+  industrial_proximity_m: number | null;
+  industrial_proximity_label: string;
+  land_cover: string;
+  cluster_density: string;
+  thermal_intensity: string;
+  summary_pattern: string;
+}
+
+export interface SmartAlertPriority {
+  score: number; // 0 - 100
+  level: RiskLevel; // "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
+  factors: string[];
 }
 
 export interface HotspotRecord {
@@ -190,6 +237,8 @@ export interface HotspotRecord {
   classification: ClassificationResult;
   alert?: AlertItem;
   intelligence?: HotspotIntelligence;
+  fingerprint?: ThermalSourceFingerprint;
+  priority?: SmartAlertPriority;
 }
 
 export interface StatisticsData {

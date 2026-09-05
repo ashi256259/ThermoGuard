@@ -136,6 +136,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     if (onSelectHotspot) onSelectHotspot(h);
   };
 
+  const handleVerificationUpdated = (updatedHotspot: any) => {
+    setSelectedHotspot(updatedHotspot);
+    setHotspots((prev) =>
+      prev.map((h) => (h.event.id === updatedHotspot.event.id ? updatedHotspot : h))
+    );
+    if (onSelectHotspot) {
+      onSelectHotspot(updatedHotspot);
+    }
+  };
+
   // Handlers for interactive KPI cards
   const handleOpenTotalHotspots = () => {
     if (onNavigateTo) {
@@ -313,7 +323,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       zoom: 5,
       zoomControl: false,
       dragging: true,
-      tap: true,
+      
       touchZoom: true,
       scrollWheelZoom: true,
       doubleClickZoom: true,
@@ -847,6 +857,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 onClose={() => setSelectedHotspot(null)}
                 onInspectDetails={onInspectDetails as any}
                 onOpenTimeline={onOpenTimeline as any}
+                onVerificationUpdated={handleVerificationUpdated as any}
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center">

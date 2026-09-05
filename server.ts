@@ -5,7 +5,27 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 import { createServer as createViteServer } from "vite";
-import { initDb, loadAllHotspots, persistHotspot, isDbConnected } from "./database_sync";
+import {
+  initDb,
+  loadAllHotspots,
+  persistHotspot,
+  isDbConnected,
+  persistRawObservation,
+  getExistingClusterCentroids,
+  queryHistoricalObservationsForCluster,
+  persistTemporalProfileRecord,
+  getTemporalProfileForCluster,
+  saveVerificationRecord,
+  getVerificationRecord,
+  getAllVerificationRecords
+} from "./database_sync";
+import {
+  TEMPORAL_CONFIG,
+  findOrCreateSpatialCluster,
+  calculateTemporalProfile,
+  RawObservation,
+  TemporalProfileResult
+} from "./temporal_engine";
 import {
   predictWithRandomForest,
   loadRandomForestModel,
@@ -13,6 +33,10 @@ import {
   evaluateRiskAndEvidence,
   CANONICAL_FEATURES
 } from "./ml_engine";
+import {
+  computeThermalFingerprint,
+  computeSmartPriority
+} from "./src/utils/fingerprintPriority";
 
 export function updateRiskAndEvidence(h: any) {
   if (!h || !h.classification) return;
@@ -189,6 +213,19 @@ export function updateRiskAndEvidence(h: any) {
     h.intelligence.prediction.class_probabilities = h.classification.class_probabilities;
     h.intelligence.prediction.model_version = h.classification.model_version;
   }
+
+  // Calculate Thermal Source Fingerprint & Smart Alert Priority
+  try {
+    h.fingerprint = computeThermalFingerprint(h.event, h.geo_context, h.temporal_profile, h.classification);
+    h.priority = computeSmartPriority(h.event, h.geo_context, h.temporal_profile, h.classification);
+    if (h.alert) {
+      h.alert.priority_score = h.priority.score;
+      h.alert.priority_level = h.priority.level;
+      h.alert.priority_factors = h.priority.factors;
+    }
+  } catch (err: any) {
+    console.warn("ThermoGuard: Error computing fingerprint/priority in updateRiskAndEvidence:", err?.message);
+  }
 }
 
 export async function runMLClassification(hotspots: any[]) {
@@ -260,6 +297,7 @@ import {
   isAnalystRole,
   canManageProviderSettings,
   canManageAlerts,
+  canVerifyClassification,
   canAccessAdminConsole
 } from "./server/auth";
 
@@ -775,17 +813,51 @@ export function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     }
   };
 
-  const tempProfile = HISTORICAL_PROFILES[raw.cluster_id] || {
-    cluster_id: raw.cluster_id,
-    first_seen: raw.timestamp,
-    last_seen: raw.timestamp,
-    observation_count: isIndustrialZone ? 2 : 1,
-    frequency_per_week: isIndustrialZone ? 6.0 : 1.0,
-    recurrence_ratio: isIndustrialZone ? 0.6 : (isForestZone ? 0.3 : 0.1),
-    persistence_days: isIndustrialZone ? 25 : (isForestZone ? 4 : 1),
-    seasonal_pattern: isFarmlandZone ? "seasonal_stubble_burn" : (isIndustrialZone ? "persistent_flaring" : (isForestZone ? "dry_season_wildfire" : "transient")),
-    is_persistent: isIndustrialZone
-  };
+  let tempProfile: any;
+  if (isDemo && HISTORICAL_PROFILES[raw.cluster_id]) {
+    const demoProf = HISTORICAL_PROFILES[raw.cluster_id];
+    tempProfile = {
+      ...demoProf,
+      cluster_id: raw.cluster_id,
+      status: "CALIBRATED_BENCHMARK",
+      behaviour: demoProf.is_persistent ? "Persistent" : "Transient",
+      first_observed_at: demoProf.first_seen,
+      last_observed_at: raw.timestamp,
+      active_days: demoProf.persistence_days,
+      active_duration_days: demoProf.persistence_days,
+      persistence_score: demoProf.is_persistent ? 0.92 : (demoProf.persistence_days <= 2 ? 0.05 : 0.25)
+    };
+  } else {
+    // LIVE MODE: MUST NEVER USE HISTORICAL_PROFILES OR HARCODED GUESSES!
+    // In live mode, baseline represents single unverified observation until query against DB
+    tempProfile = {
+      cluster_id: raw.cluster_id,
+      status: "TEMPORAL_DATA_INSUFFICIENT",
+      behaviour: "Insufficient Data",
+      first_seen: raw.timestamp,
+      last_seen: raw.timestamp,
+      first_observed_at: raw.timestamp,
+      last_observed_at: raw.timestamp,
+      observation_count: 1,
+      active_days: 1,
+      inactive_days: 0,
+      active_day_ratio: 1.0,
+      active_duration_days: 0.0,
+      active_duration_hours: 0.0,
+      persistence_days: 1,
+      persistence_score: 0.05,
+      persistence_class: "TRANSIENT",
+      is_persistent: false,
+      frequency_per_week: 1.0,
+      recurrence_ratio: 0.0,
+      recurrence_count: 0,
+      average_revisit_hours: null,
+      median_revisit_hours: null,
+      seasonal_pattern: "INSUFFICIENT_DATA",
+      seasonality_score: 0.0,
+      seasonal_concentration: 0.0
+    };
+  }
 
   // ML Feature Vector Extraction
   const features = {
@@ -805,16 +877,16 @@ export function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     urban_context: landCover === "industrial" ? 0.5 : 0.0,
     open_land_context: (!isForestZone && !isFarmlandZone && !isIndustrialZone && !isMiningZone) ? 1.0 : 0.0,
     observation_count: tempProfile.observation_count,
-    active_days: tempProfile.persistence_days,
-    active_duration: tempProfile.persistence_days,
+    active_days: tempProfile.active_days || tempProfile.persistence_days,
+    active_duration: tempProfile.active_duration_days || tempProfile.persistence_days,
     observation_frequency: tempProfile.frequency_per_week,
-    recurrence_count: Math.round(tempProfile.persistence_days * tempProfile.recurrence_ratio),
+    recurrence_count: typeof tempProfile.recurrence_count === "number" ? tempProfile.recurrence_count : Math.round(tempProfile.persistence_days * tempProfile.recurrence_ratio),
     recurrence_ratio: tempProfile.recurrence_ratio,
-    average_revisit_interval: tempProfile.frequency_per_week > 0 ? Math.round((168 / tempProfile.frequency_per_week) * 10) / 10 : 24.0,
-    median_revisit_interval: 24.0,
-    persistence_score: isIndustrialZone ? 0.85 : (isForestZone ? 0.3 : 0.1),
-    seasonality_score: isFarmlandZone ? 0.85 : (isForestZone ? 0.50 : 0.15),
-    seasonal_concentration: isFarmlandZone ? 0.85 : (isForestZone ? 0.50 : 0.15),
+    average_revisit_interval: tempProfile.average_revisit_hours !== null && tempProfile.average_revisit_hours !== undefined ? tempProfile.average_revisit_hours : (tempProfile.frequency_per_week > 0 ? Math.round((168 / tempProfile.frequency_per_week) * 10) / 10 : 24.0),
+    median_revisit_interval: tempProfile.median_revisit_hours !== null && tempProfile.median_revisit_hours !== undefined ? tempProfile.median_revisit_hours : 24.0,
+    persistence_score: typeof tempProfile.persistence_score === "number" ? tempProfile.persistence_score : (tempProfile.is_persistent ? 0.85 : 0.05),
+    seasonality_score: typeof tempProfile.seasonality_score === "number" ? tempProfile.seasonality_score : 0.0,
+    seasonal_concentration: typeof tempProfile.seasonal_concentration === "number" ? tempProfile.seasonal_concentration : 0.0,
     // Backwards compatible aliases
     dist_industry_km: Math.round((minDist / 1000) * 100) / 100,
     is_industrial_land: isIndustrialZone ? 1 : 0,
@@ -928,16 +1000,22 @@ export function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
   spatialEvidence.push(`Industrial corridor density: ${(geoContext as any).contextual_attributes?.facilities_within_10km || 1} facilities within 10 km radius`);
 
   // 3. Temporal Evidence
-  if (tempProfile.persistence_days >= 14) {
-    temporalEvidence.push(`Persistent multi-temporal source: active across ${tempProfile.persistence_days} days with ${tempProfile.observation_count} satellite detections`);
-  } else if (tempProfile.persistence_days <= 2 && tempProfile.observation_count <= 2) {
-    temporalEvidence.push(`Acute sudden-onset signature: ${tempProfile.observation_count} detection(s) across ${tempProfile.persistence_days} day(s) (no historical continuous baseline)`);
+  if (tempProfile.status === "TEMPORAL_DATA_INSUFFICIENT" || tempProfile.observation_count <= 1) {
+    temporalEvidence.push(`Single satellite pass recorded (count: 1); insufficient historical passes to determine persistence; evaluated as transient.`);
+  } else if (tempProfile.is_persistent || tempProfile.persistence_days >= 21) {
+    temporalEvidence.push(`Persistent multi-temporal source: active across ${tempProfile.persistence_days} days with ${tempProfile.observation_count} satellite detections (${Math.round(tempProfile.recurrence_ratio * 100)}% recurrence)`);
+  } else if (tempProfile.persistence_days <= 2) {
+    temporalEvidence.push(`Acute sudden-onset signature: detected across ${tempProfile.persistence_days} day(s) with ${tempProfile.observation_count} passes (no continuous baseline)`);
   } else {
-    temporalEvidence.push(`Moderate duration activity spanning ${tempProfile.persistence_days} days across ${tempProfile.observation_count} detection passes`);
+    temporalEvidence.push(`Activity spanning ${tempProfile.persistence_days} days across ${tempProfile.observation_count} detection passes`);
   }
   temporalEvidence.push(`Recurrence ratio: ${Math.round(tempProfile.recurrence_ratio * 100)}% of orbital revisit passes`);
   temporalEvidence.push(`Detection frequency: ${tempProfile.frequency_per_week} observations per week`);
-  temporalEvidence.push(`Seasonal profile: ${tempProfile.seasonal_pattern.replace('_', ' ')}`);
+  if (tempProfile.seasonal_pattern && tempProfile.seasonal_pattern !== "INSUFFICIENT_DATA") {
+    temporalEvidence.push(`Seasonal profile: ${tempProfile.seasonal_pattern.replace(/_/g, ' ')}`);
+  } else {
+    temporalEvidence.push("Seasonal evaluation: Insufficient historical baseline (<5 passes) for seasonal cycle derivation.");
+  }
 
   // 4. Class-Specific Attribution
   if (topClass === "Gas Flare") {
@@ -1132,6 +1210,15 @@ export function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
     explanation
   };
 
+  const fingerprintObj = computeThermalFingerprint(raw, geoContext, tempProfile, { predicted_class: topClass, confidence: maxProb });
+  const priorityObj = computeSmartPriority(raw, geoContext, tempProfile, { predicted_class: topClass, confidence: maxProb, risk_score: riskBand, risk_value: totalRiskVal });
+
+  if (alertObj) {
+    alertObj.priority_score = priorityObj.score;
+    alertObj.priority_level = priorityObj.level;
+    alertObj.priority_factors = priorityObj.factors;
+  }
+
   return {
     event: raw,
     geo_context: geoContext,
@@ -1158,11 +1245,505 @@ export function processThermalEvent(raw: HotspotSeed, isDemo: boolean = false) {
       interpretation_notice: intelligenceObj.prediction.interpretation_notice,
       structured_evidence: structuredEvidence,
       risk_reasons: riskReasons,
-      explanation
+      explanation,
+      // Priority 6: Human Verification / Analyst Review Layer
+      verification_status: (getVerificationRecord(raw.id)?.verification_status) || "UNVERIFIED",
+      verified_class: (getVerificationRecord(raw.id)?.verified_class) || null,
+      verified_by: (getVerificationRecord(raw.id)?.verified_by) || null,
+      verified_by_name: (getVerificationRecord(raw.id)?.verified_by_name) || null,
+      verified_at: (getVerificationRecord(raw.id)?.verified_at) || null,
+      verification_reason: (getVerificationRecord(raw.id)?.verification_reason) || null,
+      verification_audit_trail: (getVerificationRecord(raw.id)?.audit_trail) || []
     },
     alert: alertObj,
-    intelligence: intelligenceObj
+    intelligence: intelligenceObj,
+    fingerprint: computeThermalFingerprint(raw, geoContext, tempProfile, { predicted_class: topClass, confidence: maxProb }),
+    priority: computeSmartPriority(raw, geoContext, tempProfile, { predicted_class: topClass, confidence: maxProb, risk_score: riskBand, risk_value: totalRiskVal })
   };
+}
+
+/**
+ * End-to-end Live Thermal Intelligence Pipeline:
+ * LIVE NASA FIRMS
+ *       ↓
+ * Persist raw observation to thermal_events table FIRST
+ *       ↓
+ * Find/assign spatial cluster (1.2 km radius, 720 hr window)
+ *       ↓
+ * Query historical observations from DB
+ *       ↓
+ * Calculate real temporal behaviour (observation_count, active_days, persistence_days, recurrence_ratio, etc.)
+ *       ↓
+ * Generate and persist temporal profile
+ *       ↓
+ * ML Classification with real temporal features
+ *       ↓
+ * Risk + Structured Evidence + Alert
+ */
+export async function processLiveThermalEvent(raw: RawObservation): Promise<any> {
+  // 1. Geospatial context calculation
+  let nearestFac = INDUSTRIAL_FACILITIES[0];
+  let minDist = Infinity;
+  for (const fac of INDUSTRIAL_FACILITIES) {
+    const d = haversineDistance(raw.latitude, raw.longitude, fac.latitude, fac.longitude);
+    if (d < minDist) {
+      minDist = d;
+      nearestFac = fac;
+    }
+  }
+
+  const landCover = getLandCover(raw.latitude, raw.longitude);
+  const isIndustrialZone = minDist <= 2500 || landCover === "industrial";
+  const isForestZone = landCover === "dense_forest";
+  const isFarmlandZone = landCover === "cropland";
+  const isMiningZone = landCover === "mining_pit" || (nearestFac.facility_type === "mine" && minDist <= 5000);
+  const isInfrastructureNearby = isIndustrialZone || isMiningZone || minDist <= 5000;
+
+  const geoContext = {
+    nearest_industrial_facility: minDist < 50000 ? nearestFac.name : "None within 50 km",
+    facility_type: minDist < 50000 ? nearestFac.facility_type : "none",
+    distance_to_industry: Math.round(minDist * 10) / 10,
+    land_cover: landCover,
+    nearby_infrastructure: minDist < 500 ? `${nearestFac.name} Flare/Unit Stack` : "None within 2 km",
+    distance_to_infrastructure: minDist < 500 ? Math.round(minDist * 0.4) : undefined,
+    nearby_road: minDist < 5000 ? "Primary Industrial Access Highway" : "Rural Route",
+    distance_to_road: Math.round(Math.min(200, minDist * 0.2 + 30)),
+    spatial_flags: {
+      is_industrial_zone: isIndustrialZone,
+      is_forest_zone: isForestZone,
+      is_farmland_zone: isFarmlandZone,
+      is_mining_zone: isMiningZone,
+      facility_operator: nearestFac.operator
+    }
+  };
+
+  // 2. Spatial cluster assignment using existing centroids from DB / persistent store
+  const existingCentroids = await getExistingClusterCentroids();
+  const clusterId = findOrCreateSpatialCluster(
+    raw.latitude,
+    raw.longitude,
+    raw.timestamp,
+    existingCentroids,
+    TEMPORAL_CONFIG.CLUSTER_RADIUS_KM,
+    TEMPORAL_CONFIG.CLUSTER_WINDOW_HOURS
+  );
+  raw.cluster_id = clusterId;
+
+  // 3. Persist raw observation into thermal_events table FIRST
+  await persistRawObservation(raw);
+
+  // 4. Query ALL historical observations belonging to this spatial cluster from DB / persistent store
+  const historicalObs = await queryHistoricalObservationsForCluster(
+    clusterId,
+    TEMPORAL_CONFIG.CLUSTER_WINDOW_HOURS,
+    raw.timestamp
+  );
+  if (!historicalObs.some((o) => o.id === raw.id)) {
+    historicalObs.push(raw);
+  }
+
+  // 5. Calculate actual temporal behaviour from queried observations (NO HARDCODING!)
+  const tempProfile = calculateTemporalProfile(historicalObs, clusterId);
+
+  // 6. Save or update the calculated profile in temporal_profiles table
+  await persistTemporalProfileRecord(tempProfile);
+
+  // 7. Extract ML Feature Vector using REAL calculated temporal metrics
+  const features = {
+    brightness: raw.brightness,
+    frp: raw.frp,
+    firms_confidence: Math.round((raw.confidence / 100) * 1000) / 1000,
+    scan: 0.40,
+    track: 0.40,
+    daynight_flag: raw.daynight === "N" ? 0.0 : 1.0,
+    distance_to_industry_km: Math.round((minDist / 1000) * 100) / 100,
+    industrial_facility_count: minDist <= 10000 ? 1.0 : 0.0,
+    industrial_nearby_flag: isIndustrialZone ? 1.0 : 0.0,
+    mining_nearby_flag: isMiningZone ? 1.0 : 0.0,
+    infrastructure_nearby_flag: isInfrastructureNearby ? 1.0 : 0.0,
+    forest_context: isForestZone ? 1.0 : 0.0,
+    agricultural_context: isFarmlandZone ? 1.0 : 0.0,
+    urban_context: landCover === "industrial" ? 0.5 : 0.0,
+    open_land_context: (!isForestZone && !isFarmlandZone && !isIndustrialZone && !isMiningZone) ? 1.0 : 0.0,
+    observation_count: tempProfile.observation_count,
+    active_days: tempProfile.active_days,
+    active_duration: tempProfile.active_duration_days,
+    observation_frequency: tempProfile.frequency_per_week,
+    recurrence_count: tempProfile.recurrence_count,
+    recurrence_ratio: tempProfile.recurrence_ratio,
+    average_revisit_interval: tempProfile.average_revisit_hours !== null ? tempProfile.average_revisit_hours : 24.0,
+    median_revisit_interval: tempProfile.median_revisit_hours !== null ? tempProfile.median_revisit_hours : 24.0,
+    persistence_score: tempProfile.persistence_score,
+    seasonality_score: tempProfile.seasonality_score,
+    seasonal_concentration: tempProfile.seasonal_concentration,
+    // Backwards compatible aliases
+    dist_industry_km: Math.round((minDist / 1000) * 100) / 100,
+    is_industrial_land: isIndustrialZone ? 1 : 0,
+    is_forest_land: isForestZone ? 1 : 0,
+    is_farmland: isFarmlandZone ? 1 : 0,
+    is_mining_land: isMiningZone ? 1 : 0,
+    persistence_days_log: Math.round(Math.log1p(tempProfile.persistence_days) * 100) / 100
+  };
+
+  // 8. ML Model inference
+  let topClass = "Other";
+  let maxProb = 0.5;
+  let classProbabilities: Record<string, number> = {
+    "Industrial Fire": 0.0,
+    "Gas Flare": 0.0,
+    "Agricultural Burning": 0.0,
+    "Wildfire": 0.0,
+    "Mining": 0.0,
+    "Other": 1.0
+  };
+  let model_version = "random_forest_v1.0.0";
+  try {
+    const mlPred = predictWithRandomForest(features);
+    topClass = mlPred.predicted_class;
+    maxProb = mlPred.confidence;
+    classProbabilities = mlPred.class_probabilities;
+    model_version = mlPred.model_version;
+  } catch (err: any) {
+    console.error("ThermoGuard ML Error: Live inference failed:", err.message);
+    topClass = "Other";
+    maxProb = 0.50;
+  }
+
+  // 9. Risk Scoring (Multi-factor: thermal intensity, proximity, source hazard, temporal)
+  const frpNorm = Math.min(100, (raw.frp / 150) * 100);
+  const brightNorm = Math.min(100, Math.max(0, (raw.brightness - 310) / 90) * 100);
+  const sThermal = 0.65 * frpNorm + 0.35 * brightNorm;
+
+  let sProximity = 5;
+  if (minDist <= 300) sProximity = 100;
+  else if (minDist <= 1000) sProximity = 80;
+  else if (minDist <= 3000) sProximity = 50;
+  else if (minDist <= 10000) sProximity = 20;
+
+  if (topClass === "Gas Flare") {
+    sProximity *= 0.35; // Controlled routine operation in flare stack
+  }
+
+  const sourceHazardWeights: Record<string, number> = {
+    "Industrial Fire": 0.95,
+    "Wildfire": 0.85,
+    "Gas Flare": 0.25,
+    "Mining": 0.50,
+    "Agricultural Burning": 0.40,
+    "Other": 0.30
+  };
+  const sSource = (sourceHazardWeights[topClass] || 0.3) * 100;
+
+  let sTemporal = 50;
+  if (tempProfile.persistence_days <= 2 && sThermal > 60) {
+    sTemporal = 90; // Sudden acute surge
+  } else if (tempProfile.persistence_days >= 30) {
+    sTemporal = 35; // Stable continuous emission
+  }
+
+  const totalRiskVal = Math.round(
+    (30 / 92) * sThermal + (25 / 92) * sProximity + (25 / 92) * sSource + (12 / 92) * sTemporal
+  );
+
+  let riskBand: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "LOW";
+  if (totalRiskVal >= 75) riskBand = "CRITICAL";
+  else if (totalRiskVal >= 55) riskBand = "HIGH";
+  else if (totalRiskVal >= 30) riskBand = "MEDIUM";
+
+  if (topClass === "Industrial Fire" && (raw.frp >= 60 || minDist <= 500)) {
+    riskBand = "CRITICAL";
+  } else if (topClass === "Wildfire" && (raw.frp >= 35 || raw.brightness >= 345)) {
+    riskBand = "HIGH";
+  }
+
+  // 10. Structured Evidence Generation
+  const thermalEvidence: string[] = [];
+  if (raw.frp >= 100) {
+    thermalEvidence.push(`Severe thermal radiative power: ${raw.frp.toFixed(1)} MW (exceeds high-intensity industrial/wildfire threshold)`);
+  } else if (raw.frp >= 40) {
+    thermalEvidence.push(`Moderate-to-high radiative power: ${raw.frp.toFixed(1)} MW (consistent with flare stacks or active burn front)`);
+  } else {
+    thermalEvidence.push(`Low-to-moderate thermal intensity: ${raw.frp.toFixed(1)} MW (steady controlled emission or smoldering)`);
+  }
+  thermalEvidence.push(`Brightness temperature: ${raw.brightness.toFixed(1)} K recorded by ${raw.satellite}`);
+  thermalEvidence.push(`FIRMS satellite detection confidence: ${Math.round(raw.confidence)}% (multi-band spectral anomaly verification)`);
+  thermalEvidence.push(`Observation timing: ${raw.daynight === 'N' ? 'Nighttime (zero solar glint reflection)' : 'Daytime overpass'}`);
+
+  const spatialEvidence: string[] = [];
+  if (minDist <= 300) {
+    spatialEvidence.push(`Immediate industrial perimeter: ${Math.round(minDist)} m to ${geoContext.nearest_industrial_facility}`);
+  } else if (minDist <= 1000) {
+    spatialEvidence.push(`Industrial proximity: ${Math.round(minDist)} m to ${geoContext.nearest_industrial_facility}`);
+  } else if (minDist <= 5000) {
+    spatialEvidence.push(`Located ${Math.round(minDist / 100) / 10} km from nearest industrial installation (${geoContext.nearest_industrial_facility})`);
+  } else {
+    spatialEvidence.push(`Remote from industrial installations: nearest facility is ${Math.round(minDist / 1000)} km away (${geoContext.nearest_industrial_facility})`);
+  }
+  spatialEvidence.push(`Land-use / Land-cover context: Zoned as ${landCover.replace(/_/g, ' ')}`);
+
+  const temporalEvidence: string[] = [];
+  if (tempProfile.status === "TEMPORAL_DATA_INSUFFICIENT" || tempProfile.observation_count <= 1) {
+    temporalEvidence.push(`Single satellite observation recorded (count: 1); insufficient historical passes to determine persistence; evaluated as transient anomaly.`);
+  } else if (tempProfile.is_persistent || tempProfile.persistence_days >= 21) {
+    temporalEvidence.push(`Persistent multi-temporal source: active across ${tempProfile.persistence_days} days with ${tempProfile.observation_count} satellite detections (${Math.round(tempProfile.recurrence_ratio * 100)}% recurrence)`);
+  } else if (tempProfile.persistence_days <= 2) {
+    temporalEvidence.push(`Acute sudden-onset signature: detected across ${tempProfile.persistence_days} day(s) with ${tempProfile.observation_count} passes (no continuous baseline)`);
+  } else {
+    temporalEvidence.push(`Transient/intermittent activity: ${tempProfile.observation_count} detections spanning ${tempProfile.persistence_days} days`);
+  }
+  temporalEvidence.push(`Recurrence ratio: ${Math.round(tempProfile.recurrence_ratio * 100)}% of orbital revisit passes`);
+  temporalEvidence.push(`Detection frequency: ${tempProfile.frequency_per_week} observations per week`);
+  if (tempProfile.seasonal_pattern && tempProfile.seasonal_pattern !== "INSUFFICIENT_DATA") {
+    temporalEvidence.push(`Seasonal profile: ${tempProfile.seasonal_pattern.replace(/_/g, ' ')}`);
+  } else {
+    temporalEvidence.push("Seasonal evaluation: Insufficient historical baseline (<5 passes) for seasonal cycle derivation.");
+  }
+
+  const classSpecificEvidence: string[] = [];
+  if (topClass === "Gas Flare") {
+    classSpecificEvidence.push("Persistent stationary emission footprint co-located with refinery or petrochemical infrastructure");
+    classSpecificEvidence.push("High multi-week recurrence without lateral geometric expansion indicates controlled flare stack combustion");
+  } else if (topClass === "Industrial Fire") {
+    classSpecificEvidence.push("Elevated thermal radiative surge within industrial boundary indicates uncontrolled combustion outbreak");
+    classSpecificEvidence.push("Acute short-duration onset differentiates event from routine continuous flaring");
+  } else if (topClass === "Agricultural Burning") {
+    classSpecificEvidence.push("Agricultural cropland context remote from industrial installations");
+    classSpecificEvidence.push("Transient post-harvest seasonal residue combustion pattern with rapid spatial dissipation");
+  } else if (topClass === "Wildfire") {
+    classSpecificEvidence.push("Location within dense forest reserve canopy with zero industrial infrastructure");
+    classSpecificEvidence.push("High FRP biomass combustion signature characteristic of uncontained wildfire front");
+  } else if (topClass === "Mining") {
+    classSpecificEvidence.push("Spatial co-location with open-cast mining excavation pit or coal spoil heap");
+    classSpecificEvidence.push("Recurring low-velocity thermal profile characteristic of spontaneous subsurface coal oxidation");
+  } else {
+    classSpecificEvidence.push("Thermal and spatial attributes do not match standard industrial, agricultural, or wildfire profiles");
+    classSpecificEvidence.push("Isolated transient observation with low confidence margin or unclassified land-use context");
+  }
+
+  const structuredEvidence = {
+    thermal: thermalEvidence,
+    spatial: spatialEvidence,
+    temporal: temporalEvidence,
+    class_specific: classSpecificEvidence,
+    summary: [
+      spatialEvidence[0],
+      temporalEvidence[0],
+      thermalEvidence[0],
+      classSpecificEvidence[0]
+    ]
+  };
+
+  // Confidence margin and interpretation
+  const sortedProbs = Object.entries(classProbabilities).sort((a, b) => b[1] - a[1]);
+  const runnerUpClass = sortedProbs[1]?.[0] || null;
+  const runnerUpProb = sortedProbs[1]?.[1] || 0.0;
+  const confidenceMargin = Math.round((maxProb - runnerUpProb) * 10000) / 10000;
+
+  let confidenceBand: "LOW" | "MEDIUM" | "HIGH" = "HIGH";
+  if (maxProb < 0.50) confidenceBand = "LOW";
+  else if (maxProb < 0.75) confidenceBand = "MEDIUM";
+
+  let confidenceQuality: "STRONG" | "MODERATE" | "WEAK" = "STRONG";
+  let qualityReason = "";
+  if (maxProb >= 0.70 && confidenceMargin >= 0.35) {
+    confidenceQuality = "STRONG";
+    qualityReason = `Clear decision separation (margin: +${Math.round(confidenceMargin * 100)}% over runner-up ${runnerUpClass}) with verified geospatial and temporal context.`;
+  } else if (maxProb >= 0.50 && confidenceMargin >= 0.15) {
+    confidenceQuality = "MODERATE";
+    qualityReason = `Moderate probability separation (+${Math.round(confidenceMargin * 100)}% over ${runnerUpClass}); classification consistent with primary contextual signals.`;
+  } else {
+    confidenceQuality = "WEAK";
+    qualityReason = `Narrow margin separation (+${Math.round(confidenceMargin * 100)}% over ${runnerUpClass}) or incomplete contextual confirmation suggests class ambiguity.`;
+  }
+
+  const riskReasons: string[] = [];
+  if (raw.frp >= 100) {
+    riskReasons.push(`Severe thermal radiative power (${raw.frp} MW) exceeds emergency surge threshold (100 MW)`);
+  } else if (raw.frp >= 45) {
+    riskReasons.push(`Elevated radiative intensity (${raw.frp} MW) indicative of vigorous combustion`);
+  } else {
+    riskReasons.push(`Thermal radiative power (${raw.frp} MW) remains within moderate non-critical range`);
+  }
+
+  if (minDist <= 300) {
+    riskReasons.push(`Immediate proximity (${Math.round(minDist)} m) to major industrial installation`);
+  } else if (minDist <= 1000) {
+    riskReasons.push(`Close proximity (${Math.round(minDist)} m) to industrial facilities`);
+  } else {
+    riskReasons.push(`Remote location (${Math.round(minDist / 100) / 10} km from nearest industrial complex)`);
+  }
+
+  if (topClass === "Industrial Fire") {
+    riskReasons.push("Critical source classification: uncontrolled industrial fires present immediate explosion and life-safety hazards");
+  } else if (topClass === "Wildfire") {
+    riskReasons.push("High source hazard: active forest wildfire presents ecological destruction and propagation risks");
+  } else if (topClass === "Mining") {
+    riskReasons.push("Moderate source hazard: subsurface coal oxidation presents smoldering coal bed methane ignition risks");
+  } else if (topClass === "Agricultural Burning") {
+    riskReasons.push("Moderate source hazard: open crop stubble burning poses seasonal particulate air pollution (AQI impact)");
+  } else if (topClass === "Gas Flare") {
+    riskReasons.push("Low operational threat: planned combustion designed for refinery pressure management");
+  }
+
+  if (tempProfile.persistence_days <= 2 && sThermal >= 55) {
+    riskReasons.push("Acute sudden onset: abrupt thermal surge without prior continuous baseline indicates active ignition event");
+  } else if (tempProfile.persistence_days >= 30 && topClass === "Gas Flare") {
+    riskReasons.push("Long-term historical persistence confirms routine steady-state operational flaring");
+  }
+
+  let actionRecommended = "INFORMATIONAL LOGGING: Transient or controlled thermal source; no field dispatch required.";
+  if (riskBand === "CRITICAL") {
+    actionRecommended = "EMERGENCY DISPATCH: Activate Tier-3 industrial emergency response; alert district fire control room and SDMA.";
+  } else if (riskBand === "HIGH") {
+    actionRecommended = "PRIORITY SURVEILLANCE: Deploy rapid aerial/field verification units; establish containment perimeter and monitor next orbital pass.";
+  } else if (riskBand === "MEDIUM") {
+    actionRecommended = "ROUTINE MONITORING: Log observation parameters in the district environmental registry; verify emission limits against regulatory permits.";
+  }
+
+  const pct = Math.round(maxProb * 100);
+  const primaryReason = riskReasons.slice(0, 2).join("; ");
+  let explanation = "";
+  if (topClass === "Gas Flare") {
+    explanation = `Classified as Gas Flare (${pct}% model probability, ${confidenceBand} confidence) due to persistent thermal activity inside or immediately adjacent to industrial refining facilities. Stationary spatial recurrence confirms controlled flare stack combustion. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  } else if (topClass === "Industrial Fire") {
+    explanation = `Classified as Industrial Fire (${pct}% model probability, ${confidenceBand} confidence) due to an acute radiative power surge within an industrial facility perimeter. Lack of prior continuous baseline distinguishes this uncontrolled outbreak from routine flaring. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  } else if (topClass === "Agricultural Burning") {
+    explanation = `Classified as Agricultural Burning (${pct}% model probability, ${confidenceBand} confidence) based on cropland terrain context, seasonal harvest alignment, and absence of industrial infrastructure. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  } else if (topClass === "Wildfire") {
+    explanation = `Classified as Wildfire (${pct}% model probability, ${confidenceBand} confidence) due to elevated thermal radiative power situated within a dense forest reserve canopy. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  } else if (topClass === "Mining") {
+    explanation = `Classified as Mining (${pct}% model probability, ${confidenceBand} confidence) owing to co-location within an open-cast mining basin and recurring oxidation signature. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  } else {
+    explanation = `Classified as Other (${pct}% model probability, ${confidenceBand} confidence) because observation attributes do not exhibit definitive industrial, agricultural, or forest wildfire characteristics. Operational risk is assessed as ${riskBand} (${totalRiskVal}/100) on the basis of: ${primaryReason}.`;
+  }
+
+  let alertObj: any = null;
+  if (riskBand === "HIGH" || riskBand === "CRITICAL") {
+    alertObj = {
+      id: `alt-${raw.id}`,
+      event_id: raw.id,
+      title: `${riskBand} RISK HAZARD: ${topClass} at ${geoContext.nearest_industrial_facility}`,
+      description: `Radiative surge of ${raw.frp} MW detected. ${structuredEvidence.summary[0]}`,
+      severity: riskBand,
+      status: "ACTIVE",
+      facility_name: geoContext.nearest_industrial_facility,
+      action_recommended: actionRecommended,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      acknowledged_by: null,
+      acknowledged_at: null,
+      resolved_by: null,
+      resolved_at: null,
+      resolution_notes: null,
+      audit_trail: [
+        {
+          timestamp: new Date().toISOString(),
+          action: "SYSTEM_TRIGGERED",
+          performed_by: "ThermoGuard Geospatial Risk Engine",
+          notes: `Automatic alert dispatched on ${riskBand} risk classification (Risk Score: ${totalRiskVal}/100)`
+        }
+      ]
+    };
+  }
+
+  const fingerprintObj = computeThermalFingerprint(raw, geoContext, tempProfile, { predicted_class: topClass, confidence: maxProb });
+  const priorityObj = computeSmartPriority(raw, geoContext, tempProfile, { predicted_class: topClass, confidence: maxProb, risk_score: riskBand, risk_value: totalRiskVal });
+
+  if (alertObj) {
+    alertObj.priority_score = priorityObj.score;
+    alertObj.priority_level = priorityObj.level;
+    alertObj.priority_factors = priorityObj.factors;
+  }
+
+  const enriched = {
+    event: {
+      id: raw.id,
+      latitude: raw.latitude,
+      longitude: raw.longitude,
+      timestamp: raw.timestamp,
+      brightness: raw.brightness,
+      frp: raw.frp,
+      confidence: raw.confidence,
+      satellite: raw.satellite || "VIIRS_NRT",
+      daynight: raw.daynight || "D",
+      source: raw.source || "NASA_FIRMS_LIVE",
+      cluster_id: clusterId
+    },
+    geo_context: geoContext,
+    temporal_profile: tempProfile,
+    classification: {
+      predicted_class: topClass,
+      confidence: maxProb,
+      risk_score: riskBand,
+      risk_value: totalRiskVal,
+      persistence_score: tempProfile.persistence_score,
+      model_version: model_version,
+      evidence: structuredEvidence.summary,
+      feature_vector: features,
+      class_probabilities: classProbabilities,
+      risk_breakdown: {
+        thermal_intensity_score: Math.round(sThermal),
+        hazard_proximity_score: Math.round(sProximity),
+        source_type_hazard_score: Math.round(sSource),
+        temporal_urgency_score: Math.round(sTemporal)
+      },
+      confidence_band: confidenceBand,
+      confidence_margin: confidenceMargin,
+      confidence_quality: confidenceQuality,
+      interpretation_notice: qualityReason,
+      structured_evidence: structuredEvidence,
+      risk_reasons: riskReasons,
+      explanation,
+      // Priority 6: Human Verification / Analyst Review Layer
+      verification_status: (getVerificationRecord(raw.id)?.verification_status) || "UNVERIFIED",
+      verified_class: (getVerificationRecord(raw.id)?.verified_class) || null,
+      verified_by: (getVerificationRecord(raw.id)?.verified_by) || null,
+      verified_by_name: (getVerificationRecord(raw.id)?.verified_by_name) || null,
+      verified_at: (getVerificationRecord(raw.id)?.verified_at) || null,
+      verification_reason: (getVerificationRecord(raw.id)?.verification_reason) || null,
+      verification_audit_trail: (getVerificationRecord(raw.id)?.audit_trail) || []
+    },
+    alert: alertObj,
+    intelligence: {
+      event_id: raw.id,
+      timestamp: raw.timestamp,
+      cluster_id: clusterId,
+      prediction: {
+        predicted_class: topClass,
+        confidence: maxProb,
+        confidence_band: confidenceBand,
+        confidence_margin: confidenceMargin,
+        confidence_quality: confidenceQuality,
+        interpretation_notice: qualityReason,
+        class_probabilities: classProbabilities,
+        model_version: model_version
+      },
+      temporal_profile: tempProfile,
+      evidence: structuredEvidence,
+      risk: {
+        score: totalRiskVal,
+        level: riskBand,
+        reasons: riskReasons,
+        breakdown: {
+          thermal_intensity_score: Math.round(sThermal),
+          hazard_proximity_score: Math.round(sProximity),
+          source_type_hazard_score: Math.round(sSource),
+          temporal_urgency_score: Math.round(sTemporal)
+        },
+        action_recommended: actionRecommended
+      },
+      explanation
+    },
+    fingerprint: fingerprintObj,
+    priority: priorityObj
+  };
+
+  // Persist the full hotspot into DB if connected
+  if (isDbConnected()) {
+    await persistHotspot(enriched);
+  }
+
+  return enriched;
 }
 
 async function startServer() {
@@ -1210,6 +1791,40 @@ async function startServer() {
     }
   } catch (err: any) {
     console.warn("ThermoGuard: Initial ML classification warning:", err.message);
+  }
+
+  // Restore and attach any persisted human verifications so analyst decisions survive startup/reclassification
+  const storedVerifs = getAllVerificationRecords();
+  for (const h of hotspots) {
+    const v = storedVerifs[h.event.id];
+    if (v && v.verification_status && v.verification_status !== "UNVERIFIED") {
+      h.classification.verification_status = v.verification_status;
+      h.classification.verified_class = v.verified_class || null;
+      h.classification.verified_by = v.verified_by || null;
+      h.classification.verified_by_name = v.verified_by_name || null;
+      h.classification.verified_at = v.verified_at || null;
+      h.classification.verification_reason = v.verification_reason || null;
+      h.classification.verification_audit_trail = v.audit_trail || [];
+    }
+  }
+
+  // Pre-calculate and attach Thermal Source Fingerprint & Smart Alert Prioritization to all hotspots
+  for (const h of hotspots) {
+    try {
+      if (!h.fingerprint) {
+        h.fingerprint = computeThermalFingerprint(h.event, h.geo_context, h.temporal_profile, h.classification);
+      }
+      if (!h.priority) {
+        h.priority = computeSmartPriority(h.event, h.geo_context, h.temporal_profile, h.classification);
+      }
+      if (h.alert) {
+        h.alert.priority_score = h.alert.priority_score ?? h.priority.score;
+        h.alert.priority_level = h.alert.priority_level ?? h.priority.level;
+        h.alert.priority_factors = h.alert.priority_factors ?? h.priority.factors;
+      }
+    } catch (err: any) {
+      console.warn(`ThermoGuard: Error attaching fingerprint/priority to ${h.event?.id}:`, err?.message);
+    }
   }
 
   let isLiveMode = (
@@ -1339,6 +1954,40 @@ async function startServer() {
         error: "ALERT_MANAGEMENT_ACCESS_DENIED",
         message: `Analyst clearance (${user.role}) is read-only. Acknowledging, resolving, or escalating alerts requires Command Authority or Field Operations clearance.`,
         required_clearance: "ADMIN, CHIEF_SURVEILLANCE_OFFICER, or FIELD_OPERATIONS_OFFICER"
+      });
+    }
+
+    (req as any).user = user;
+    (req as any).session = sessionData.session;
+    next();
+  };
+
+  // Role-Based Authorization Middleware for Human Verification / Classification Review
+  const requireVerificationClearance = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : (req.query.token as string);
+
+    if (!token) {
+      return res.status(401).json({
+        error: "AUTHENTICATION_REQUIRED",
+        message: "Missing authorization token. Please sign in as an authorized GIS Analyst or Officer to verify classifications."
+      });
+    }
+
+    const sessionData = authManager.validateSession(token);
+    if (!sessionData) {
+      return res.status(401).json({
+        error: "SESSION_EXPIRED_OR_INVALID",
+        message: "Session token is invalid or has expired."
+      });
+    }
+
+    const user = sessionData.user;
+    if (!canVerifyClassification(user.role)) {
+      return res.status(403).json({
+        error: "VERIFICATION_ACCESS_DENIED",
+        message: `Clearance (${user.role}) is unauthorized to verify or reclassify thermal sources. Verification requires GIS Intelligence Analyst or Command Authority clearance.`,
+        required_clearance: "SENIOR_GIS_ANALYST, ANALYST, CHIEF_SURVEILLANCE_OFFICER, or ADMIN"
       });
     }
 
@@ -1778,12 +2427,15 @@ async function startServer() {
         accepted++;
       }
 
-      const enrichedEvents = newSeeds.map(s => processThermalEvent(s, false));
-      await runMLClassification(enrichedEvents);
-
-      if (isDbConnected()) {
-        for (const ev of enrichedEvents) {
-          await persistHotspot(ev);
+      const enrichedEvents: any[] = [];
+      for (const s of newSeeds) {
+        try {
+          const enriched = await processLiveThermalEvent(s);
+          enrichedEvents.push(enriched);
+        } catch (procErr: any) {
+          console.error(`Error in live temporal pipeline for event ${s.id}:`, procErr.message);
+          const fallback = processThermalEvent(s, false);
+          enrichedEvents.push(fallback);
         }
       }
 
@@ -1876,12 +2528,15 @@ async function startServer() {
           accepted++;
         }
 
-        const enrichedEvents = newSeeds.map(s => processThermalEvent(s, false));
-        await runMLClassification(enrichedEvents);
-        
-        if (isDbConnected()) {
-          for (const ev of enrichedEvents) {
-            await persistHotspot(ev);
+        const enrichedEvents: any[] = [];
+        for (const s of newSeeds) {
+          try {
+            const enriched = await processLiveThermalEvent(s);
+            enrichedEvents.push(enriched);
+          } catch (procErr: any) {
+            console.error(`Error in live temporal pipeline for custom ingest ${s.id}:`, procErr.message);
+            const fallback = processThermalEvent(s, false);
+            enrichedEvents.push(fallback);
           }
         }
         
@@ -1997,7 +2652,36 @@ async function startServer() {
     if (!found) {
       return res.status(404).json({ error: `Hotspot ${req.params.id} not found` });
     }
+    if (!found.fingerprint) {
+      found.fingerprint = computeThermalFingerprint(found.event, found.geo_context, found.temporal_profile, found.classification);
+    }
+    if (!found.priority) {
+      found.priority = computeSmartPriority(found.event, found.geo_context, found.temporal_profile, found.classification);
+    }
+    if (found.alert && !found.alert.priority_score) {
+      found.alert.priority_score = found.priority.score;
+      found.alert.priority_level = found.priority.level;
+      found.alert.priority_factors = found.priority.factors;
+    }
     res.json(found);
+  });
+
+  app.get("/api/hotspots/:id/fingerprint", (req, res) => {
+    const found = hotspots.find((h) => h.event.id === req.params.id);
+    if (!found) return res.status(404).json({ error: "Not found" });
+    if (!found.fingerprint) {
+      found.fingerprint = computeThermalFingerprint(found.event, found.geo_context, found.temporal_profile, found.classification);
+    }
+    res.json({ event_id: req.params.id, fingerprint: found.fingerprint });
+  });
+
+  app.get("/api/hotspots/:id/priority", (req, res) => {
+    const found = hotspots.find((h) => h.event.id === req.params.id);
+    if (!found) return res.status(404).json({ error: "Not found" });
+    if (!found.priority) {
+      found.priority = computeSmartPriority(found.event, found.geo_context, found.temporal_profile, found.classification);
+    }
+    res.json({ event_id: req.params.id, priority: found.priority });
   });
 
   app.get("/api/hotspots/:id/context", (req, res) => {
@@ -2018,21 +2702,74 @@ async function startServer() {
     res.json((found as any).intelligence || null);
   });
 
-  app.get("/api/hotspots/:id/timeline", (req, res) => {
+  app.get("/api/hotspots/:id/timeline", async (req, res) => {
     const found = hotspots.find((h) => h.event.id === req.params.id);
     if (!found) return res.status(404).json({ error: "Not found" });
 
-    res.json({
-      event_id: req.params.id,
-      cluster_id: found.temporal_profile.cluster_id,
-      temporal_profile: found.temporal_profile,
-      observation_history: [
+    const clusterId = found.temporal_profile?.cluster_id || found.event?.cluster_id;
+    let history: any[] = [];
+
+    if (found.event.source === "NASA_FIRMS_LIVE" || !found.event.id.startsWith("te-scen-")) {
+      // Query REAL database historical observations for this cluster
+      try {
+        const rawObs = await queryHistoricalObservationsForCluster(clusterId, TEMPORAL_CONFIG.CLUSTER_WINDOW_HOURS);
+        if (rawObs.length > 0) {
+          history = rawObs.map((o) => ({
+            date: o.timestamp.split("T")[0],
+            timestamp: o.timestamp,
+            frp: o.frp,
+            brightness: o.brightness,
+            satellite: o.satellite,
+            confidence: o.confidence,
+            daynight: o.daynight
+          }));
+        }
+      } catch (err) {
+        console.warn("Failed to query historical observations for timeline:", err);
+      }
+
+      if (history.length === 0) {
+        // Fallback to the current single live event observation
+        history = [
+          {
+            date: found.event.timestamp.split("T")[0],
+            timestamp: found.event.timestamp,
+            frp: found.event.frp,
+            brightness: found.event.brightness,
+            satellite: found.event.satellite,
+            confidence: found.event.confidence,
+            daynight: found.event.daynight
+          }
+        ];
+      }
+    } else {
+      // Demo scenario with simulated historical passes
+      history = [
         { date: "2026-09-03", frp: found.event.frp, brightness: found.event.brightness, satellite: found.event.satellite },
         { date: "2026-09-02", frp: Math.round(Math.max(5, found.event.frp * 0.92) * 10) / 10, brightness: Math.round((found.event.brightness - 3.5) * 10) / 10, satellite: "VIIRS_NOAA20" },
         { date: "2026-09-01", frp: Math.round(Math.max(5, found.event.frp * 0.97) * 10) / 10, brightness: Math.round((found.event.brightness + 2) * 10) / 10, satellite: "MODIS_Aqua" },
         { date: "2026-08-30", frp: Math.round(Math.max(5, found.event.frp * 0.88) * 10) / 10, brightness: Math.round((found.event.brightness - 5) * 10) / 10, satellite: "VIIRS_SNPP" },
         { date: "2026-08-28", frp: Math.round(Math.max(5, found.event.frp * 1.05) * 10) / 10, brightness: Math.round((found.event.brightness + 1.2) * 10) / 10, satellite: "MODIS_Terra" }
-      ]
+      ];
+    }
+
+    res.json({
+      event_id: req.params.id,
+      cluster_id: clusterId,
+      temporal_profile: found.temporal_profile,
+      observation_history: history
+    });
+  });
+
+  app.get("/api/hotspots/:id/temporal", async (req, res) => {
+    const found = hotspots.find((h) => h.event.id === req.params.id);
+    if (!found) return res.status(404).json({ error: "Not found" });
+    const clusterId = found.temporal_profile?.cluster_id || found.event?.cluster_id;
+    const dbProfile = await getTemporalProfileForCluster(clusterId);
+    res.json({
+      event_id: req.params.id,
+      cluster_id: clusterId,
+      temporal_profile: dbProfile || found.temporal_profile
     });
   });
 
@@ -2089,13 +2826,22 @@ async function startServer() {
   });
 
   app.get("/api/alerts", (req, res) => {
-    const { severity, status } = req.query;
+    const { severity, status, sort } = req.query;
     const rawAlerts = hotspots.map((h) => h.alert).filter(Boolean);
     const seen = new Set<string>();
     let alerts: any[] = [];
     for (const a of rawAlerts) {
       if (a && a.id && !seen.has(a.id)) {
         seen.add(a.id);
+        const parentH = hotspots.find((h) => h.event.id === a.event_id);
+        if (parentH) {
+          if (!parentH.priority) {
+            parentH.priority = computeSmartPriority(parentH.event, parentH.geo_context, parentH.temporal_profile, parentH.classification);
+          }
+          a.priority_score = a.priority_score ?? parentH.priority.score;
+          a.priority_level = a.priority_level ?? parentH.priority.level;
+          a.priority_factors = a.priority_factors ?? parentH.priority.factors;
+        }
         alerts.push(a);
       }
     }
@@ -2111,6 +2857,11 @@ async function startServer() {
         return curStatus === qStatus;
       });
     }
+
+    if (sort === "smart_priority" || sort === "priority") {
+      alerts.sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0));
+    }
+
     res.json(alerts);
   });
 
@@ -2311,6 +3062,214 @@ async function startServer() {
       }
     }
     return res.status(404).json({ error: `Alert ${alertId} not found` });
+  });
+
+  // ==========================================
+  // PRIORITY 6: HUMAN VERIFICATION & ANALYST REVIEW ROUTES
+  // Decision-Support Workflow: AI recommends, Analyst verifies
+  // ==========================================
+
+  const handleVerifyEvent = async (req: express.Request, res: express.Response) => {
+    const eventId = req.params.id;
+    const { status, verified_class, reason } = req.body || {};
+
+    const validStatuses = ["CONFIRMED", "RECLASSIFIED", "NEEDS_REVIEW"];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: "INVALID_STATUS",
+        message: `Verification status must be one of: ${validStatuses.join(", ")}`
+      });
+    }
+
+    const validClasses = [
+      "Industrial Fire",
+      "Gas Flare",
+      "Agricultural Burning",
+      "Wildfire",
+      "Mining",
+      "Other"
+    ];
+
+    if (status === "RECLASSIFIED") {
+      if (!verified_class || !validClasses.includes(verified_class)) {
+        return res.status(400).json({
+          error: "INVALID_VERIFIED_CLASS",
+          message: `When status is RECLASSIFIED, verified_class is required and must be one of: ${validClasses.join(", ")}`
+        });
+      }
+      if (!reason || typeof reason !== "string" || reason.trim().length < 3) {
+        return res.status(400).json({
+          error: "REASON_REQUIRED",
+          message: "A meaningful operational justification reason (min 3 characters) is required when reclassifying an event."
+        });
+      }
+    }
+
+    if (status === "NEEDS_REVIEW") {
+      if (!reason || typeof reason !== "string" || reason.trim().length < 3) {
+        return res.status(400).json({
+          error: "REASON_REQUIRED",
+          message: "A clear justification reason (min 3 characters) is required when flagging an event for secondary review."
+        });
+      }
+    }
+
+    const found = hotspots.find((h) => h.event.id === eventId);
+    if (!found) {
+      return res.status(404).json({ error: `Thermal event ${eventId} not found` });
+    }
+
+    const user = (req as any).user;
+    const analystName = user.name || "GIS Analyst";
+    const analystRole = user.role || "ANALYST";
+    const analystBadge = user.badge_number || analystRole;
+    const verifiedByString = `${analystName} (${analystBadge})`;
+    const verifiedAt = new Date().toISOString();
+
+    const finalVerifiedClass = status === "CONFIRMED"
+      ? (verified_class || found.classification.predicted_class)
+      : (status === "RECLASSIFIED" ? verified_class : null);
+
+    const finalReason = reason && reason.trim().length > 0
+      ? reason.trim()
+      : (status === "CONFIRMED" ? "Confirmed by GIS Analyst review based on multi-source satellite telemetry and geospatial infrastructure context." : null);
+
+    const prevStatus = found.classification.verification_status || "UNVERIFIED";
+
+    const auditEntry = {
+      timestamp: verifiedAt,
+      action: status,
+      performed_by: `${analystName} [${analystRole}]`,
+      user_id: user.id,
+      badge_number: user.badge_number || null,
+      previous_status: prevStatus,
+      ai_predicted_class: found.classification.predicted_class,
+      verified_class: finalVerifiedClass,
+      reason: finalReason
+    };
+
+    // Update in-memory classification WITHOUT overwriting original AI prediction
+    found.classification.verification_status = status;
+    found.classification.verified_class = finalVerifiedClass;
+    found.classification.verified_by = verifiedByString;
+    found.classification.verified_by_name = analystName;
+    found.classification.verified_at = verifiedAt;
+    found.classification.verification_reason = finalReason;
+
+    if (!found.classification.verification_audit_trail) {
+      found.classification.verification_audit_trail = [];
+    }
+    found.classification.verification_audit_trail.unshift(auditEntry);
+
+    // If an alert exists for this event, log to alert audit trail as well
+    if (found.alert) {
+      if (!found.alert.audit_trail) found.alert.audit_trail = [];
+      found.alert.audit_trail.unshift({
+        timestamp: verifiedAt,
+        action: `ANALYST_${status}`,
+        performed_by: `${analystName} [${analystRole}]`,
+        notes: `Analyst classification review: ${status}${finalVerifiedClass ? ` (${finalVerifiedClass})` : ""}. Reason: ${finalReason}`
+      });
+      found.alert.updated_at = verifiedAt;
+    }
+
+    // Persist immediately to DB and persistent store
+    try {
+      await saveVerificationRecord(eventId, {
+        verification_status: status,
+        verified_class: finalVerifiedClass,
+        verified_by: verifiedByString,
+        verified_by_name: analystName,
+        verified_at: verifiedAt,
+        verification_reason: finalReason,
+        audit_trail: found.classification.verification_audit_trail
+      });
+      if (isDbConnected()) {
+        await persistHotspot(found);
+      }
+    } catch (persistErr: any) {
+      console.warn(`ThermoGuard: Error persisting verification for ${eventId}:`, persistErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: `Thermal source ${eventId} verification recorded: ${status}.`,
+      event_id: eventId,
+      verification: {
+        verification_status: status,
+        verified_class: finalVerifiedClass,
+        verified_by: verifiedByString,
+        verified_by_name: analystName,
+        verified_at: verifiedAt,
+        verification_reason: finalReason,
+        audit_trail: found.classification.verification_audit_trail
+      },
+      ai_prediction: {
+        predicted_class: found.classification.predicted_class,
+        confidence: found.classification.confidence,
+        confidence_band: found.classification.confidence_band,
+        model_version: found.classification.model_version,
+        evidence: found.classification.evidence
+      },
+      hotspot: found
+    });
+  };
+
+  app.post("/api/events/:id/verify", requireVerificationClearance, handleVerifyEvent);
+  app.post("/api/hotspots/:id/verify", requireVerificationClearance, handleVerifyEvent);
+
+  app.get("/api/events/:id/verification", (req, res) => {
+    const found = hotspots.find((h) => h.event.id === req.params.id);
+    if (!found) return res.status(404).json({ error: "Not found" });
+    return res.json({
+      event_id: req.params.id,
+      verification_status: found.classification.verification_status || "UNVERIFIED",
+      verified_class: found.classification.verified_class || null,
+      verified_by: found.classification.verified_by || null,
+      verified_by_name: found.classification.verified_by_name || null,
+      verified_at: found.classification.verified_at || null,
+      verification_reason: found.classification.verification_reason || null,
+      audit_trail: found.classification.verification_audit_trail || [],
+      ai_predicted_class: found.classification.predicted_class,
+      confidence: found.classification.confidence,
+      model_version: found.classification.model_version
+    });
+  });
+
+  app.get("/api/hotspots/:id/verification", (req, res) => {
+    const found = hotspots.find((h) => h.event.id === req.params.id);
+    if (!found) return res.status(404).json({ error: "Not found" });
+    return res.json({
+      event_id: req.params.id,
+      verification_status: found.classification.verification_status || "UNVERIFIED",
+      verified_class: found.classification.verified_class || null,
+      verified_by: found.classification.verified_by || null,
+      verified_by_name: found.classification.verified_by_name || null,
+      verified_at: found.classification.verified_at || null,
+      verification_reason: found.classification.verification_reason || null,
+      audit_trail: found.classification.verification_audit_trail || [],
+      ai_predicted_class: found.classification.predicted_class,
+      confidence: found.classification.confidence,
+      model_version: found.classification.model_version
+    });
+  });
+
+  app.get("/api/verifications", (req, res) => {
+    const verifs = getAllVerificationRecords();
+    const verifiedList = Object.entries(verifs).map(([eventId, rec]) => {
+      const h = hotspots.find((item) => item.event.id === eventId);
+      return {
+        event_id: eventId,
+        ...rec,
+        ai_predicted_class: h?.classification.predicted_class || null,
+        confidence: h?.classification.confidence || null,
+        risk_score: h?.classification.risk_score || null
+      };
+    });
+    return res.json({
+      total: verifiedList.length,
+      verifications: verifiedList
+    });
   });
 
   // ==========================================
@@ -2671,8 +3630,14 @@ async function startServer() {
       daynight: "D"
     };
 
-    const analyzed = processThermalEvent(newRaw, false);
-    await runMLClassification([analyzed]);
+    let analyzed: any;
+    try {
+      analyzed = await processLiveThermalEvent(newRaw);
+    } catch (procErr: any) {
+      console.error(`Error in live temporal pipeline for ad-hoc inspection:`, procErr.message);
+      analyzed = processThermalEvent(newRaw, false);
+      await runMLClassification([analyzed]);
+    }
     
     // Add to session hotspots so it displays on the GIS map immediately
     hotspots = [analyzed, ...hotspots];

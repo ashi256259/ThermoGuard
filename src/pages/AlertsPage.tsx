@@ -24,6 +24,7 @@ import { apiService, HotspotItem } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 interface AlertsPageProps {
+  hotspots?: HotspotItem[];
   onSelectHotspot?: (hotspot: HotspotItem) => void;
   onViewOnMap?: (hotspot: HotspotItem) => void;
   onOpenTimeline?: (hotspot: HotspotItem) => void;
@@ -103,6 +104,7 @@ const IncidentStatusTracker = ({ status }: { status: string }) => {
 };
 
 export const AlertsPage: React.FC<AlertsPageProps> = ({
+  hotspots,
   onSelectHotspot,
   onViewOnMap,
   onOpenTimeline,
@@ -113,6 +115,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedSeverity, setSelectedSeverity] = useState<string>(initialSeverity || "All");
   const [selectedStatus, setSelectedStatus] = useState<string>("All");
+  const [sortBy, setSortBy] = useState<string>("smart_priority");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -221,8 +224,46 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
     }
   };
 
-  // Aggregated alert counts
+  
+  const sortedAlerts = React.useMemo(() => {
+    let sorted = [...alerts];
+    if (sortBy === "smart_priority" || sortBy === "priority") {
+      sorted.sort((a, b) => {
+        const getScore = (item: any) => {
+          if (item.priority_score !== undefined && item.priority_score !== null) return item.priority_score;
+          const parent = hotspots?.find(h => h.event.id === item.event_id);
+          if (parent?.priority?.score !== undefined) return parent.priority.score;
+          const scoreMap: Record<string, number> = { "CRITICAL": 85, "HIGH": 65, "MEDIUM": 45, "LOW": 20 };
+          return scoreMap[item.severity] || 30;
+        };
+        return getScore(b) - getScore(a);
+      });
+    } else if (sortBy === "critical_first") {
+      const score: Record<string, number> = { "CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1 };
+      sorted.sort((a, b) => (score[b.severity] || 0) - (score[a.severity] || 0));
+    } else if (sortBy === "high") {
+      sorted.sort((a, b) => (a.severity === "HIGH" ? -1 : b.severity === "HIGH" ? 1 : 0));
+    } else if (sortBy === "medium") {
+      sorted.sort((a, b) => (a.severity === "MEDIUM" ? -1 : b.severity === "MEDIUM" ? 1 : 0));
+    } else if (sortBy === "low") {
+      sorted.sort((a, b) => (a.severity === "LOW" ? -1 : b.severity === "LOW" ? 1 : 0));
+    } else if (sortBy === "newest") {
+      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else if (sortBy === "persistent") {
+      sorted.sort((a, b) => {
+        const ha = hotspots?.find(h => h.event.id === a.event_id);
+        const hb = hotspots?.find(h => h.event.id === b.event_id);
+        const pA = ha?.temporal_profile?.is_persistent ? 1 : 0;
+        const pB = hb?.temporal_profile?.is_persistent ? 1 : 0;
+        if (pB !== pA) return pB - pA;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    }
+    return sorted;
+  }, [alerts, sortBy, hotspots]);
+
   const totalCount = alerts.length;
+
   const criticalCount = alerts.filter((a) => a.severity === "CRITICAL").length;
   const highCount = alerts.filter((a) => a.severity === "HIGH").length;
   const activeCount = alerts.filter((a) => a.status === "ACTIVE").length;
@@ -334,6 +375,36 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
               ))}
             </div>
           </div>
+
+          <div className="h-4 w-px bg-slate-200 hidden md:block" />
+
+          {/* Prioritization / Sort Controls */}
+          <div className="flex items-center gap-2 max-w-full overflow-x-auto pb-1 sm:pb-0">
+            <span className="text-xs font-semibold text-slate-700 flex-shrink-0">Prioritization:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
+              {[
+                { id: "smart_priority", label: "Smart Priority (0–100)" },
+                { id: "critical_first", label: "Critical first" },
+                { id: "high", label: "High" },
+                { id: "medium", label: "Medium" },
+                { id: "low", label: "Low" },
+                { id: "newest", label: "Newest" },
+                { id: "persistent", label: "Persistent" }
+              ].map((sortOption) => (
+                <button
+                  key={sortOption.id}
+                  onClick={() => setSortBy(sortOption.id)}
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[32px] ${
+                    sortBy === sortOption.id
+                      ? "bg-white text-blue-700 shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {sortOption.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <span className="text-[11px] sm:text-xs text-slate-500 font-mono font-medium">
@@ -346,7 +417,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
         <div className="flex items-center justify-center p-12 text-slate-400 text-xs">
           Loading incident dispatches...
         </div>
-      ) : alerts.length === 0 ? (
+      ) : sortedAlerts.length === 0 ? (
         <div className="p-12 rounded-2xl bg-white border border-slate-200/80 text-center text-slate-500 text-xs space-y-2 shadow-sm">
           <CheckCircle className="w-8 h-8 text-emerald-600 mx-auto" />
           <p className="text-slate-900 font-bold text-sm">No alerts matching current filters</p>
@@ -354,80 +425,182 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
-          {alerts.map((alert, index) => {
+          {sortedAlerts.map((alert, index) => {
             const isCrit = alert.severity === "CRITICAL";
             const isHigh = alert.severity === "HIGH";
-            const isResolved = alert.status === "RESOLVED";
-            const isAck = alert.status === "ACKNOWLEDGED";
-
-            const severityStyle = isResolved
-              ? "border-slate-200 bg-white opacity-60"
-              : isCrit
-              ? "border-red-200 bg-red-50/30"
+            const severityStyle = isCrit
+              ? "bg-red-50/50 border-red-200"
               : isHigh
-              ? "border-orange-200 bg-orange-50/30"
-              : "border-amber-200 bg-amber-50/30";
+              ? "bg-orange-50/50 border-orange-200"
+              : "bg-white border-slate-200/80";
+            
+            const isAck = alert.status === "ACKNOWLEDGED";
+            const isResolved = alert.status === "RESOLVED";
 
+            const h = hotspots?.find(hs => hs.event.id === alert.event_id);
+            
             return (
               <div
                 key={alert.id ? `${alert.id}-${index}` : `alert-${index}`}
-                className={`p-5 rounded-2xl border transition-all shadow-xs ${severityStyle}`}
+                className={`p-4 sm:p-5 rounded-2xl border transition-all shadow-xs ${severityStyle} flex flex-col gap-4`}
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <ShieldAlert className={`w-4 h-4 flex-shrink-0 ${isCrit ? "text-red-600" : isHigh ? "text-orange-600" : "text-amber-600"}`} />
-                    <span className="font-bold text-slate-900 text-sm tracking-tight">{alert.title}</span>
-                    <span
-                      className={`text-[10px] px-2.5 py-0.5 rounded font-bold border uppercase ${
-                        isCrit
-                          ? "bg-red-50 text-red-700 border-red-200"
-                          : isHigh
-                          ? "bg-orange-50 text-orange-700 border-orange-200"
-                          : "bg-amber-50 text-amber-700 border-amber-200"
-                      }`}
-                    >
-                      {alert.severity} Severity
-                    </span>
-                    <span
-                      className={`text-[10px] px-2.5 py-0.5 rounded font-bold border uppercase ${
-                        isResolved
-                          ? "bg-teal-50 text-teal-700 border-teal-200"
-                          : isAck
-                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : "bg-red-50 text-red-700 border-red-200"
-                      }`}
-                    >
-                      Status: {alert.status}
-                    </span>
+                {/* 1. Header: Incident ID, Time, Priority */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-slate-200/60">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <ShieldAlert className={`w-4 h-4 flex-shrink-0 ${isCrit ? "text-red-600" : isHigh ? "text-orange-600" : "text-amber-600"}`} />
+                      <span className="font-bold text-slate-900 text-[15px] tracking-tight">INCIDENT: {alert.event_id}</span>
+                      <span
+                        className={`text-[10px] px-2.5 py-0.5 rounded font-bold border uppercase ${
+                          isCrit
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : isHigh
+                            ? "bg-orange-50 text-orange-700 border-orange-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        {alert.severity} PRIORITY
+                      </span>
+
+                      {/* Smart Priority Score 0-100 */}
+                      <span
+                        className={`text-[10px] px-2.5 py-0.5 rounded-full font-black font-mono border flex items-center gap-1 ${
+                          (alert.priority_level || alert.severity) === "CRITICAL"
+                            ? "bg-rose-50 text-rose-700 border-rose-300"
+                            : (alert.priority_level || alert.severity) === "HIGH"
+                            ? "bg-amber-50 text-amber-700 border-amber-300"
+                            : "bg-blue-50 text-blue-700 border-blue-300"
+                        }`}
+                        title="Deterministic Multi-Factor Priority Score (0–100)"
+                      >
+                        <ShieldAlert className="w-3 h-3" />
+                        Score: {alert.priority_score ?? h?.priority?.score ?? (isCrit ? 85 : isHigh ? 65 : 40)}/100
+                        <span className="font-semibold text-[9px] opacity-80 uppercase">
+                          ({alert.priority_level ?? h?.priority?.level ?? alert.severity})
+                        </span>
+                      </span>
+
+                      <span
+                        className={`text-[10px] px-2.5 py-0.5 rounded font-bold border uppercase ${
+                          isResolved
+                            ? "bg-teal-50 text-teal-700 border-teal-200"
+                            : isAck
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                        }`}
+                      >
+                        Status: {alert.status}
+                      </span>
+                    </div>
+                    {h && (
+                      <div className="flex items-center gap-3 text-xs text-slate-500 font-mono flex-wrap mt-1">
+                        <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {h.event.latitude.toFixed(4)}, {h.event.longitude.toFixed(4)}</div>
+                        <div className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(h.event.timestamp).toLocaleString()}</div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{alert.created_at ? new Date(alert.created_at).toLocaleString() : "Live Detection"}</span>
+                  {/* Recommended Attention Badge */}
+                  <div className="flex flex-col items-start sm:items-end gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recommended Attention</span>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-lg border ${isCrit ? "bg-red-100 text-red-800 border-red-200" : isHigh ? "bg-orange-100 text-orange-800 border-orange-200" : "bg-blue-50 text-blue-800 border-blue-200"}`}>
+                      {alert.action_recommended || (isCrit ? "Immediate Investigation" : isHigh ? "Field Verification" : "Monitor")}
+                    </span>
                   </div>
                 </div>
 
-                <div className="mt-3 text-xs text-slate-700 leading-relaxed font-medium">
-                  {alert.description}
+                {/* Grid for Incident Details */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Left Column: Classification & Attributes */}
+                  <div className="flex flex-col gap-3">
+                    <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-2xs">
+                      <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Classification & Context</h4>
+                      {h ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500">Source:</span>
+                            <span className="text-xs font-bold text-slate-900">{h.classification.predicted_class}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500">AI Confidence:</span>
+                            <span className="text-xs font-bold text-emerald-600">{(h.classification.confidence * 100).toFixed(1)}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500">Risk Score:</span>
+                            <span className="text-xs font-bold text-red-600">{h.classification.risk_value} / 100</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500">Persistence:</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${h.temporal_profile.is_persistent ? "bg-indigo-50 text-indigo-700 border-indigo-200 border" : "bg-slate-100 text-slate-600 border border-slate-200"}`}>
+                              {h.temporal_profile.is_persistent ? "PERSISTENT" : "TRANSIENT"}
+                            </span>
+                          </div>
+                          {h.geo_context.nearest_industrial_facility !== "Unknown" && (
+                            <div className="flex items-start justify-between gap-2 border-t border-slate-100 pt-2 mt-2">
+                              <span className="text-xs text-slate-500 whitespace-nowrap">Near:</span>
+                              <span className="text-xs font-semibold text-slate-800 text-right">{h.geo_context.nearest_industrial_facility}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500 italic">No detailed telemetry available.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Middle Column: Evidence */}
+                  <div className="lg:col-span-2 flex flex-col gap-2">
+                    <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5"><BrainCircuit className="w-3.5 h-3.5 text-blue-600" /> Evidence for Alert</h4>
+                    <div className="bg-blue-50/50 rounded-xl p-3 border border-blue-100">
+                      {h && h.classification.evidence && h.classification.evidence.length > 0 ? (
+                        <ul className="space-y-1.5">
+                          {h.classification.evidence.map((ev, i) => (
+                            <li key={i} className="text-xs text-slate-700 flex items-start gap-1.5 leading-relaxed">
+                              <span className="text-blue-500 font-bold mt-0.5">•</span>
+                              <span>{ev}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-xs text-slate-700 leading-relaxed font-medium">{alert.description}</div>
+                      )}
+                    </div>
+                    {/* Priority Assignment & Contributing Factors */}
+                    {((alert.priority_factors && alert.priority_factors.length > 0) || (h?.priority?.factors && h.priority.factors.length > 0)) ? (
+                      <div className="mt-1 bg-slate-900 text-slate-100 rounded-xl p-3 border border-slate-800 space-y-1.5 shadow-sm">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold flex items-center gap-1.5 text-cyan-400">
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            Contributing Priority Factors:
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            Deterministic Multi-Factor Scoring
+                          </span>
+                        </div>
+                        <ul className="text-[11px] text-slate-200 space-y-0.5 pl-4 list-disc marker:text-cyan-400">
+                          {(alert.priority_factors || h?.priority?.factors || []).map((factor: string, fIdx: number) => (
+                            <li key={fIdx} className="leading-snug">
+                              {factor}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-start gap-2 text-[11px] text-slate-600 bg-slate-100/80 rounded-lg p-2.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <p>
+                          <span className="font-bold text-slate-700 mr-1">Priority Assignment:</span>
+                          {h ? `Escalated to ${alert.severity} due to Risk Score of ${h.classification.risk_value} and ${h.temporal_profile.is_persistent ? "persistent" : "acute"} characteristics.` : "Assigned based on hazard proximity and intensity."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {alert.facility_name && (
-                  <div className="mt-2.5 flex items-center gap-2 text-xs text-slate-600">
-                    <Building2 className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                    <span>Target Perimeter: <strong className="text-slate-900 font-semibold">{alert.facility_name}</strong></span>
-                  </div>
-                )}
-
-                {alert.action_recommended && (
-                  <div className="mt-3 p-3 rounded-xl bg-white border border-slate-200/80 text-xs text-slate-700 shadow-2xs">
-                    <span className="font-bold text-amber-700">Emergency Protocol: </span>
-                    <span className="font-medium">{alert.action_recommended}</span>
-                  </div>
-                )}
-                
                 <IncidentStatusTracker status={alert.incident_status || alert.status} />
-                
+
+                {/* Assign and Update Status block */}
                 {canResolveAlerts && (isCrit || isHigh) && alert.status !== "RESOLVED" && (
-                  <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row gap-3">
+                  <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row gap-3">
                     <select
                       onChange={(e) => handleAssignTeam(alert.id, e.target.value)}
                       value={alert.assigned_team || ""}
@@ -454,7 +627,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                 )}
 
                 {/* Interactive Action Bar */}
-                <div className="mt-4 pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
+                <div className="mt-2 pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {canResolveAlerts ? (
                       <>
@@ -465,7 +638,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                             className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
                           >
                             <Check className="w-3.5 h-3.5" />
-                            <span>Acknowledge Incident</span>
+                            <span>Acknowledge</span>
                           </button>
                         )}
                         {alert.status !== "RESOLVED" && (
@@ -495,7 +668,6 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({
                       </div>
                     )}
                   </div>
-
                   <div className="flex items-center gap-2 flex-wrap">
                     {alert.event_id && onSelectHotspot && (
                       <button

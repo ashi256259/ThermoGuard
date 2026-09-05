@@ -446,6 +446,12 @@ export function canManageAlerts(role: string): boolean {
   return isAdminRole(role) || role === "FIELD_OPERATIONS_OFFICER";
 }
 
+export function canVerifyClassification(role: string): boolean {
+  // GIS/intelligence analyst roles and authority/admin roles can verify/reclassify.
+  // Field operations officers read verification results but cannot change them.
+  return isAnalystRole(role) || isAdminRole(role);
+}
+
 export function canAccessAdminConsole(role: string): boolean {
   return isAdminRole(role);
 }

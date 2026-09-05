@@ -67,7 +67,7 @@ export const GisMap: React.FC<GisMapProps> = ({
       zoom: mapZoom,
       zoomControl: false,
       dragging: true,
-      tap: true,
+      
       touchZoom: true,
       scrollWheelZoom: true,
       doubleClickZoom: true,

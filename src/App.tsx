@@ -207,6 +207,7 @@ function AuthenticatedApp() {
 
       {currentPage === "alerts" && (
         <AlertsPage
+          hotspots={hotspots}
           initialSeverity={alertsInitialSeverity}
           onSelectHotspot={handleInspectDetails}
           onViewOnMap={handleViewOnMap}

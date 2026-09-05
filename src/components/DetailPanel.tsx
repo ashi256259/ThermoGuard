@@ -20,20 +20,34 @@ import { TimelineChart } from "./TimelineChart";
 import { Tooltip } from "./Tooltip";
 import { ChevronRight } from "lucide-react";
 import { extractEvidenceArray } from "../utils/reportExporter";
+import { AnalystVerificationCard } from "./AnalystVerificationCard";
+import { ThermalSourceFingerprintCard } from "./ThermalSourceFingerprintCard";
 
 interface DetailPanelProps {
   hotspot: HotspotRecord | null;
   onClose: () => void;
   onInspectDetails?: (hotspot: HotspotRecord) => void;
   onOpenTimeline?: (hotspot: HotspotRecord) => void;
+  onVerificationUpdated?: (updatedHotspot: HotspotRecord) => void;
 }
 
-export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onInspectDetails, onOpenTimeline }) => {
+export const DetailPanel: React.FC<DetailPanelProps> = ({
+  hotspot,
+  onClose,
+  onInspectDetails,
+  onOpenTimeline,
+  onVerificationUpdated
+}) => {
+  const [activeHotspot, setActiveHotspot] = useState<HotspotRecord | null>(hotspot);
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [intelligenceData, setIntelligenceData] = useState<HotspotIntelligence | null>(null);
   const [showTechnical, setShowTechnical] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveHotspot(hotspot);
+  }, [hotspot]);
 
   useEffect(() => {
     if (!hotspot) return;
@@ -76,8 +90,9 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
     );
   }
 
-  const { event, geo_context, temporal_profile, classification } = hotspot;
-  const intel = intelligenceData || hotspot.intelligence;
+  const currentItem = activeHotspot || hotspot;
+  const { event, geo_context, temporal_profile, classification } = currentItem;
+  const intel = intelligenceData || currentItem.intelligence;
   
   const riskLevel = intel?.risk?.level || classification.risk_score || "LOW";
 
@@ -140,13 +155,26 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
             {riskLevel} RISK
           </span>
           <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${getClassBadgeColor(classification.predicted_class)}`}>
-            {classification.predicted_class}
+            AI: {classification.predicted_class}
           </span>
+          {classification.verification_status && classification.verification_status !== "UNVERIFIED" && (
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+              classification.verification_status === "CONFIRMED"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                : classification.verification_status === "RECLASSIFIED"
+                ? "bg-purple-50 text-purple-800 border-purple-300"
+                : "bg-amber-50 text-amber-800 border-amber-300"
+            }`}>
+              {classification.verification_status === "CONFIRMED" && `VERIFIED: ${classification.verified_class || classification.predicted_class}`}
+              {classification.verification_status === "RECLASSIFIED" && `RECLASSIFIED: ${classification.verified_class}`}
+              {classification.verification_status === "NEEDS_REVIEW" && "REVIEW FLAGGED"}
+            </span>
+          )}
           <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-50 text-slate-700 border border-slate-200">
             {(classification.confidence * 100).toFixed(1)}% Conf
           </span>
           <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-50 text-slate-500 border border-slate-200">
-            Model: Random Forest
+            RF Model
           </span>
         </div>
       </div>
@@ -159,6 +187,21 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({ hotspot, onClose, onIn
       )}
 
       <div className="p-4 space-y-4">
+        {/* PRIORITY 6: HUMAN VERIFICATION & ANALYST REVIEW */}
+        <AnalystVerificationCard
+          hotspot={currentItem}
+          onVerificationUpdated={(updated) => {
+            setActiveHotspot(updated);
+            if (onVerificationUpdated) {
+              onVerificationUpdated(updated);
+            }
+          }}
+          compact={true}
+        />
+
+        {/* THERMAL SOURCE FINGERPRINT & SMART PRIORITIZATION */}
+        <ThermalSourceFingerprintCard hotspot={currentItem} compact={true} />
+
         {/* OVERVIEW */}
         <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 space-y-2.5">
           <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">

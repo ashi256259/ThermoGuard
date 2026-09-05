@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS temporal_profiles (
 CREATE INDEX IF NOT EXISTS idx_temporal_profiles_cluster ON temporal_profiles (cluster_id);
 CREATE INDEX IF NOT EXISTS idx_temporal_profiles_persistence ON temporal_profiles (persistence_days);
 
--- 5. Table: classifications (ML Inference Output and Transparent Evidence)
+-- 5. Table: classifications (ML Inference Output, Transparent Evidence & Human Verification)
 CREATE TABLE IF NOT EXISTS classifications (
     id VARCHAR(64) PRIMARY KEY,
     event_id VARCHAR(64) REFERENCES thermal_events(id) ON DELETE CASCADE,
@@ -115,12 +115,28 @@ CREATE TABLE IF NOT EXISTS classifications (
     model_version VARCHAR(50) NOT NULL,       -- e.g. 'rf_classifier_v1.0.0'
     evidence JSONB NOT NULL,                  -- structured list of factual evidence
     feature_vector JSONB NOT NULL,            -- normalized ML feature values
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- Priority 6: Human Verification / Analyst Review Layer
+    verified_class source_class_enum,
+    verification_status VARCHAR(50) DEFAULT 'UNVERIFIED', -- 'UNVERIFIED', 'CONFIRMED', 'RECLASSIFIED', 'NEEDS_REVIEW'
+    verified_by VARCHAR(255),
+    verified_at TIMESTAMP WITH TIME ZONE,
+    verification_reason TEXT,
+    verification_audit JSONB DEFAULT '[]'::jsonb
 );
+
+-- Idempotent column migrations if classifications table already exists
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS verified_class source_class_enum;
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS verification_status VARCHAR(50) DEFAULT 'UNVERIFIED';
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS verified_by VARCHAR(255);
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS verification_reason TEXT;
+ALTER TABLE classifications ADD COLUMN IF NOT EXISTS verification_audit JSONB DEFAULT '[]'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_classifications_event_id ON classifications (event_id);
 CREATE INDEX IF NOT EXISTS idx_classifications_predicted_class ON classifications (predicted_class);
 CREATE INDEX IF NOT EXISTS idx_classifications_risk_score ON classifications (risk_score);
+CREATE INDEX IF NOT EXISTS idx_classifications_verification_status ON classifications (verification_status);
 
 -- 6. Table: alerts (Automated notifications for high-risk thermal events)
 CREATE TABLE IF NOT EXISTS alerts (

@@ -29,6 +29,8 @@ import {
   exportBatchHotspotsCsv,
   extractEvidenceArray
 } from "../utils/reportExporter";
+import { AnalystVerificationCard } from "../components/AnalystVerificationCard";
+import { ThermalSourceFingerprintCard } from "../components/ThermalSourceFingerprintCard";
 
 interface SourceDetailsPageProps {
   hotspot?: HotspotItem | null;
@@ -237,6 +239,16 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
   };
 
   const currentHotspot = selectedHotspot || allHotspots[0];
+
+  const handleVerificationUpdate = (updatedItem: any) => {
+    setSelectedHotspot(updatedItem);
+    setAllHotspots((prev) =>
+      prev.map((h) => (h.event.id === updatedItem.event.id ? updatedItem : h))
+    );
+    if (onSelectHotspot) {
+      onSelectHotspot(updatedItem);
+    }
+  };
 
   // Report generation handlers
   const handleDownloadPdf = (target?: HotspotItem | null) => {
@@ -610,6 +622,31 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
                       </div>
                     </div>
 
+                    {/* Verification Status Badge */}
+                    {currentHotspot.classification.verification_status && currentHotspot.classification.verification_status !== "UNVERIFIED" && (
+                      <div
+                        className={`px-3.5 py-2 rounded-xl border ${
+                          currentHotspot.classification.verification_status === "CONFIRMED"
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-900"
+                            : currentHotspot.classification.verification_status === "RECLASSIFIED"
+                            ? "bg-purple-50 border-purple-300 text-purple-900"
+                            : "bg-amber-50 border-amber-300 text-amber-900"
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold uppercase tracking-wider">
+                          {currentHotspot.classification.verification_status === "CONFIRMED" && "Human Confirmed"}
+                          {currentHotspot.classification.verification_status === "RECLASSIFIED" && "Reclassified"}
+                          {currentHotspot.classification.verification_status === "NEEDS_REVIEW" && "Needs Review"}
+                        </div>
+                        <div className="text-sm font-bold">
+                          {currentHotspot.classification.verified_class || currentHotspot.classification.verification_status}
+                        </div>
+                        <div className="text-[10px] font-mono truncate max-w-[130px]">
+                          By: {currentHotspot.classification.verified_by || "Analyst"}
+                        </div>
+                      </div>
+                    )}
+
                     <div
                       className={`px-3.5 py-2 rounded-xl border ${
                         currentHotspot.classification.risk_score === "CRITICAL"
@@ -674,7 +711,9 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
                     <div className="text-[10px] font-bold text-slate-500 uppercase">Distance to Industry</div>
                     <div className="text-lg font-black text-slate-900 font-mono mt-0.5">
                       {currentHotspot.geo_context.distance_to_industry !== undefined
-                        ? `${(currentHotspot.geo_context.distance_to_industry * 1000).toFixed(0)} m`
+                        ? currentHotspot.geo_context.distance_to_industry < 1000
+                          ? `${Math.round(currentHotspot.geo_context.distance_to_industry)} m`
+                          : `${(currentHotspot.geo_context.distance_to_industry / 1000).toFixed(1)} km`
                         : "N/A"}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -693,6 +732,15 @@ export const SourceDetailsPage: React.FC<SourceDetailsPageProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Thermal Source Fingerprint & Smart Prioritization */}
+              <ThermalSourceFingerprintCard hotspot={currentHotspot} />
+
+              {/* Priority 6: Human Verification / Analyst Review */}
+              <AnalystVerificationCard
+                hotspot={currentHotspot as any}
+                onVerificationUpdated={handleVerificationUpdate}
+              />
 
               {/* Multi-Class Ensemble Probabilities & Evidence */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

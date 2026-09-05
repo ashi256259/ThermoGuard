@@ -12,6 +12,7 @@ interface AuthContextType {
   isFieldOps: boolean;
   canManageProviders: boolean;
   canResolveAlerts: boolean;
+  canVerifyClassification: boolean;
   canAccessAdminDashboard: boolean;
   login: (username: string, password: string) => Promise<UserProfile>;
   register: (params: {
@@ -125,6 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isFieldOps = userRole === "FIELD_OPERATIONS_OFFICER";
   const canManageProviders = isAdmin;
   const canResolveAlerts = isAdmin || isFieldOps;
+  const canVerifyClassification = isAnalyst || isOfficer || isAdmin;
   const canAccessAdminDashboard = isAdmin;
 
   return (
@@ -140,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isFieldOps,
         canManageProviders,
         canResolveAlerts,
+        canVerifyClassification,
         canAccessAdminDashboard,
         login,
         register,
